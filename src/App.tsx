@@ -1,11 +1,18 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from './assets/vite.svg'
 import heroImg from './assets/hero.png'
+import { fetchStations } from './gbfs'
 import './App.css'
 
 function App() {
   const [count, setCount] = useState(0)
+
+  useEffect(() => {
+    fetchStations().then((stations) => {
+      console.log(`Loaded ${stations.length} stations`, stations[0])
+    })
+  }, [])
 
   return (
     <>
