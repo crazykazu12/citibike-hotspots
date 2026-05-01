@@ -1,30 +1,46 @@
-import { useEffect, useState } from 'react'
-import { fetchStations } from './gbfs'
+import { useMemo } from 'react'
 import { Map } from './Map'
-import type { Station } from './types'
-
-type State =
-  | { status: 'loading' }
-  | { status: 'error'; message: string }
-  | { status: 'ready'; stations: Station[] }
+import { useStationActivity } from './useStationActivity'
+import { WINDOW_SIZE } from './activity'
+import { computeNeighborhoodActivity } from './neighborhoods'
 
 function App() {
-  const [state, setState] = useState<State>({ status: 'loading' })
+  const { stations, neighborhoods, stationToNeighborhood, error, snapshotCount, activity } =
+    useStationActivity()
 
-  useEffect(() => {
-    fetchStations()
-      .then((stations) => setState({ status: 'ready', stations }))
-      .catch((err: unknown) =>
-        setState({
-          status: 'error',
-          message: err instanceof Error ? err.message : String(err),
-        }),
-      )
-  }, [])
+  const neighborhoodActivity = useMemo(
+    () => computeNeighborhoodActivity(activity, stationToNeighborhood),
+    [activity, stationToNeighborhood],
+  )
 
-  if (state.status === 'loading') return <p>Loading stations…</p>
-  if (state.status === 'error') return <p>Error loading stations: {state.message}</p>
-  return <Map stations={state.stations} />
+  const maxNeighborhoodScore = useMemo(() => {
+    let max = 0
+    for (const a of neighborhoodActivity.values()) {
+      if (a.totalScore > max) max = a.totalScore
+    }
+    return max
+  }, [neighborhoodActivity])
+
+  if (error) return <p>Error loading stations: {error}</p>
+  if (!stations) return <p>Loading stations…</p>
+
+  return (
+    <>
+      <Map
+        stations={stations}
+        activity={activity}
+        snapshotCount={snapshotCount}
+        neighborhoods={neighborhoods}
+        neighborhoodActivity={neighborhoodActivity}
+        maxNeighborhoodScore={maxNeighborhoodScore}
+      />
+      {snapshotCount < 2 && (
+        <div className="gathering-banner">
+          Gathering activity data… ({snapshotCount} / {WINDOW_SIZE} snapshots)
+        </div>
+      )}
+    </>
+  )
 }
 
 export default App

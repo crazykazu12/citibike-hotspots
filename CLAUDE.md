@@ -40,3 +40,7 @@ Entry point: `index.html` → `src/main.tsx` → `src/App.tsx`.
 `leaflet.heat` has no `@types` package — a local `src/leaflet-heat.d.ts` declaration file is needed before importing it.
 
 Leaflet requires its CSS to be imported explicitly; add `import 'leaflet/dist/leaflet.css'` before using any map components.
+
+## Project Journal
+A running log of decisions and changes lives in PROJECT_JOURNAL.md at the project root.
+After meaningful changes, append a Build Log entry there.

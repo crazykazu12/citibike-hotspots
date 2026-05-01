@@ -102,3 +102,80 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+.legend {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 1000;
+  max-width: 260px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #222;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.gathering-banner {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  padding: 8px 14px;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+.station-popup {
+  font-size: 13px;
+  line-height: 1.45;
+  color: #222;
+}
+
+.station-popup strong {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 4px;
+  color: #111;
+}
+
+.station-popup > div {
+  margin-top: 3px;
+}
+
+.popup-caveat {
+  margin-top: 8px !important;
+  font-size: 11px;
+  color: #777;
+  font-style: italic;
+}
+
+.popup-gathering {
+  margin-top: 6px !important;
+  font-size: 12px;
+  color: #777;
+  font-style: italic;
+}
+
+.neighborhood-popup {
+  font-size: 13px;
+  line-height: 1.45;
+  color: #222;
+}
+
+.neighborhood-popup strong {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 2px;
+  color: #111;
+}
+
+.neighborhood-popup > div {
+  margin-top: 3px;
+}

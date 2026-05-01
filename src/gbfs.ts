@@ -20,3 +20,9 @@ export async function fetchStations(): Promise<Station[]> {
     return status ? [{ ...info, ...status }] : []
   })
 }
+
+export async function fetchStationStatus(): Promise<RawStationStatus[]> {
+  const res = await fetch(STATUS_URL)
+  const feed: GbfsFeed<RawStationStatus> = await res.json()
+  return feed.data.stations
+}

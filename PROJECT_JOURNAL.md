@@ -38,8 +38,9 @@ static site.
 2. **Data fetching** — typed fetcher merging `station_information` + `station_status` on `station_id`
 3. **Map with markers** — Leaflet centered on NYC, ~2,000 markers with click-to-popup
 4. **Heatmap with activity model** — the meat of the app; multiple iterations (see below)
-5. **Polish** — (in progress)
-6. **Deploy** — (pending)
+5. **Zoom-aware neighborhood layer** — NTA polygons + station→NTA mapping + zoom-thresholded swap
+6. **Polish** — (in progress)
+7. **Deploy** — (pending)
 
 ---
 
@@ -93,11 +94,13 @@ Initial implementation ranked all 2000 stations by score. Most had score 0
 identical bullseyes everywhere — users couldn't tell which hotspot was hottest.
 
 **Solution:** Zoom-dependent visualization.
-- **Zoom ≤ 13** (city overview): NYC neighborhoods (NTAs) colored by aggregate activity
+- **Zoom ≤ 14** (city/borough overview): NYC neighborhoods (NTAs) colored by aggregate activity
 - **Zoom ≥ 15** (neighborhood-level): station-level heatmap visible
-- **Hard swap** at the threshold (deferred crossfade as future polish)
+- **Crossfade** between 14 and 15 (fractional zoom enabled, opacity-interpolated)
 
 Markers visible at all zoom levels for click-to-detail.
+
+> Implemented 2026-04-26 — see Build Log. Initial Phase 5 used a hard swap at zoom 13/15; superseded same day by the fractional crossfade described above.
 
 ### 5. Power scaling for heatmap contrast
 
@@ -136,6 +139,38 @@ of waiting ~2 minutes for the rolling window to fill).
 **Captured for later:** if first-load UX becomes the top complaint after deploy,
 a lightweight pattern (GitHub Actions + Cloudflare R2 + a JSON file) avoids
 needing a real server. Documented in IDEAS.md.
+
+---
+
+## Build Log
+
+### 2026-04-26 — Zoom-aware neighborhood layer
+- **Changed:** Added `src/neighborhoods.ts` (loader, point-in-polygon assignment, activity aggregation, cool→warm color scale), `src/NeighborhoodLayer.tsx` (GeoJSON polygon layer), zoom tracking + conditional rendering in `src/Map.tsx`, derived neighborhood activity in `src/App.tsx`. New static asset at `public/data/nyc-neighborhoods.geojson` (4.4 MB, NTA 2020). Installed `@turf/boolean-point-in-polygon`.
+- **Why:** Implements decision #4 — at low zoom, per-station heat looked like identical bullseyes; neighborhood-level aggregation gives a meaningful overview, station heat returns at high zoom.
+- **Notable:** macOS case-insensitive FS treats `Neighborhoods.tsx` and `neighborhoods.ts` as the same file — renamed component to `NeighborhoodLayer.tsx`. Zoom 14 is currently a transitional zone (outlined polygons, no heatmap) because both `NEIGHBORHOOD_ZOOM_MAX = 13` and `STATION_ZOOM_MIN = 15` constants are honored; pull `STATION_ZOOM_MIN` to 14 to remove the gap.
+
+### 2026-04-26 — Fractional zoom + crossfade between layers
+- **Changed:** `src/Map.tsx` now uses `zoomSnap={0}` and `zoomDelta={0.25}` for continuous zoom, listens to both `zoom` and `zoomend`, and computes `fillOpacityMultiplier` and `heatmapOpacity` via a `lerp(zoom, 14, 15)`. Bumped `NEIGHBORHOOD_ZOOM_MAX` from 13 → 14 so neighborhood view persists for several zoom levels. Refactored `src/NeighborhoodLayer.tsx` to take `fillOpacityMultiplier` instead of a `mode` enum and apply style imperatively via `eachLayer().setStyle()` so opacity changes don't remount the layer. `src/Heatmap.tsx` accepts a `paneName`; heatmap renders into a custom `<Pane>` whose CSS opacity is updated imperatively via a small `PaneOpacity` helper (react-leaflet v5's `<Pane>` doesn't reactively update its style prop). Added `pane?: string` to the heatmap type shim.
+- **Why:** Phase 5's hard swap at integer zoom thresholds left zoom 14 in a dead zone and felt jarring. Continuous zoom + opacity crossfade replaces both problems.
+- **Notable:** Outlines stay at constant opacity throughout the transition — only fill is faded — matching the request to keep neighborhood context visible at high zoom. Polygon hover/click is intentionally left enabled at all zoom levels; markers are in `markerPane` (higher z-index than `overlayPane`) so marker clicks aren't intercepted. `NEIGHBORHOOD_ZOOM_MAX` and `TRANSITION_ZOOM_START` are intentionally redundant aliases (TRANSITION_* derives from the named threshold) so both names from the spec stay present in the code.
+
+### 2026-04-26 — Tune scroll-wheel zoom speed
+- **Changed:** Added `wheelPxPerZoomLevel={40}` to `MapContainer` in `src/Map.tsx`.
+- **Why:** Scroll-wheel zoom felt slow with `zoomDelta=0.25`; this decouples scroll speed from button delta, keeping fine-grained button control while making scroll more responsive.
+- **Notable:** Default is 60 — lower = faster scroll. May need further tuning (try 30 if still slow, 50 if it overshoots).
+
+### 2026-04-26 — Lower wheelPxPerZoomLevel to 30
+- **Changed:** `wheelPxPerZoomLevel` 40 → 30 in `src/Map.tsx`.
+- **Why:** 40 still felt slow; 30 doubles the default scroll speed.
+
+### 2026-04-26 — Lower wheelPxPerZoomLevel to 20
+- **Changed:** `wheelPxPerZoomLevel` 30 → 20 in `src/Map.tsx`.
+- **Why:** 30 still wasn't fast enough; 20 is 3× the default scroll speed.
+
+### 2026-04-26 — Fix heatmap opacity wiring (canvas-direct)
+- **Changed:** Removed the `<Pane name="heat-pane">` + `PaneOpacity` indirection from `src/Map.tsx`. `src/Heatmap.tsx` now takes an `opacity` prop and applies it directly to the canvas element returned by `L.heatLayer` via `(layer as any)._canvas.style.opacity`. Two effects: one creates/destroys the layer when `stations`/`activity` change, the other only updates `canvas.style.opacity` on opacity changes (no re-creation per zoom tick). Removed the now-misleading `pane?` field from `src/leaflet-heat.d.ts` and the `paneName` plumbing from `Heatmap`.
+- **Why:** Crossfade between neighborhood and station layers wasn't working — heatmap was rendering at full opacity regardless of zoom. Root cause: leaflet.heat canvas wasn't being placed in our custom pane, so pane-level opacity changes had no effect.
+- **Notable:** leaflet.heat 0.2.0 ignores the `pane` option — its `onAdd` hardcodes `map._panes.overlayPane.appendChild(this._canvas)` (verified by reading `node_modules/leaflet.heat/src/HeatLayer.js:54`). Lesson for future Leaflet plugin work: don't assume options documented in the API actually work — verify by inspecting the resulting DOM (or, faster, the plugin source). Reaching into `_canvas` is technically a private field, but stable since 2014.
 
 ---
 
