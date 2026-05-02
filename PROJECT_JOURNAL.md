@@ -20,15 +20,19 @@ static site.
 | Choice | Reason |
 |---|---|
 | **React + Vite + TypeScript** | Modern, fast dev loop; TypeScript catches mistakes during a rusty re-onramp to coding |
-| **Leaflet + react-leaflet** | Free, no API key, mature; OpenStreetMap tiles |
-| **leaflet.heat** | Drop-in heatmap layer for Leaflet |
+| **MapLibre GL JS + react-map-gl** | Vector tiles, fluid zoom, GPU-accelerated layers, paint-expression-driven style updates. Replaced Leaflet (see decision #8) |
+| **Protomaps PMTiles + @protomaps/basemaps** | Free, no API key, no per-request rate limits. Single static file servable from any HTTP host. "Light" theme is intentionally low-contrast under data overlays |
+| **MapLibre native `heatmap` layer type** | Replaces `leaflet.heat`; weight + opacity driven by paint expressions, no JS state in the render path |
 | **No backend** | GBFS is public + CORS-enabled; can fetch directly from browser |
 | **Vercel (planned)** | Free static hosting, GitHub auto-deploy |
 
 **Considered and rejected:**
 - Mapbox / Google Maps — required API keys and billing setup for a free project
 - Python backend (FastAPI) — unnecessary for v1; would have added scope
-- D3 for custom heatmap — leaflet.heat handles it well enough
+- D3 for custom heatmap — MapLibre's native heatmap is faster and simpler
+
+**Initially used, then replaced:**
+- Leaflet + react-leaflet + leaflet.heat — see decision #8 for the migration rationale
 
 ---
 
@@ -39,8 +43,9 @@ static site.
 3. **Map with markers** — Leaflet centered on NYC, ~2,000 markers with click-to-popup
 4. **Heatmap with activity model** — the meat of the app; multiple iterations (see below)
 5. **Zoom-aware neighborhood layer** — NTA polygons + station→NTA mapping + zoom-thresholded swap
-6. **Polish** — (in progress)
-7. **Deploy** — (pending)
+6. **Migration to MapLibre + Protomaps; simplified to hotspot-only view** — full rewrite of the map layer; removed markers, popups, ranking
+7. **Polish** — (in progress)
+8. **Deploy** — (pending)
 
 ---
 
@@ -140,6 +145,23 @@ of waiting ~2 minutes for the rolling window to fill).
 a lightweight pattern (GitHub Actions + Cloudflare R2 + a JSON file) avoids
 needing a real server. Documented in IDEAS.md.
 
+### 8. Migration to MapLibre + Protomaps; simplification to hotspot-only
+
+**Why migrated off Leaflet:**
+- Two phases of fighting `leaflet.heat`: opacity wasn't controllable through any documented API, and the eventual fix reached into the layer's private `_canvas` field. When you're touching `_<thing>` to make a library work, the library has stopped fitting your use case.
+- Vector tiles (Protomaps) give fluid zoom natively. Leaflet's raster zoom always felt steppy even with `zoomSnap=0` and a custom `wheelPxPerZoomLevel`.
+- MapLibre's native `heatmap` layer renders on the GPU with paint-expression-driven `heatmap-weight` and `heatmap-opacity`. The crossfade between neighborhood polygons and station heat is now declarative — `['interpolate', ['linear'], ['zoom'], 14, 0.55, 15, 0]` re-evaluates per frame without React in the loop.
+- `react-map-gl/maplibre` mirrors react-leaflet's component shape (`<Map>`, `<Source>`, `<Layer>`) so the surface area to learn was small.
+
+**Why simplified the product to hotspot-only:**
+- Per-station markers + click-popups were the most code-heavy and least frequently-used feature. Visualization is the value; per-station detail is a niche follow-up.
+- Bounds-relative heatmap normalization (visible-max instead of city-wide-max) reveals local hotspots in quiet neighborhoods that absolute scaling rendered as flat zero. Pan to Inwood and the locally-active station now glows red, even if its absolute score is dwarfed by Midtown.
+- Dropping markers also dropped the `rank`, `category`, `bikesIn`, `bikesOut`, and `category` fields from `StationActivity` — same pass cleaned up `activity.ts` and `NeighborhoodActivity` to just the score-related fields the renderer actually consumes.
+
+**Tradeoffs accepted:**
+- Bundle is now larger (1.3 MB vs ~360 KB pre-migration) — MapLibre + the Protomaps theme spec dominates. Code-splitting deferred until it actually matters.
+- Protomaps demo PMTiles bucket is a development crutch — not contractually stable, URL has changed across major versions before. Pre-public release: self-host a NYC extract via `pmtiles extract` on R2/S3/GitHub Pages.
+
 ---
 
 ## Build Log
@@ -171,6 +193,11 @@ needing a real server. Documented in IDEAS.md.
 - **Changed:** Removed the `<Pane name="heat-pane">` + `PaneOpacity` indirection from `src/Map.tsx`. `src/Heatmap.tsx` now takes an `opacity` prop and applies it directly to the canvas element returned by `L.heatLayer` via `(layer as any)._canvas.style.opacity`. Two effects: one creates/destroys the layer when `stations`/`activity` change, the other only updates `canvas.style.opacity` on opacity changes (no re-creation per zoom tick). Removed the now-misleading `pane?` field from `src/leaflet-heat.d.ts` and the `paneName` plumbing from `Heatmap`.
 - **Why:** Crossfade between neighborhood and station layers wasn't working — heatmap was rendering at full opacity regardless of zoom. Root cause: leaflet.heat canvas wasn't being placed in our custom pane, so pane-level opacity changes had no effect.
 - **Notable:** leaflet.heat 0.2.0 ignores the `pane` option — its `onAdd` hardcodes `map._panes.overlayPane.appendChild(this._canvas)` (verified by reading `node_modules/leaflet.heat/src/HeatLayer.js:54`). Lesson for future Leaflet plugin work: don't assume options documented in the API actually work — verify by inspecting the resulting DOM (or, faster, the plugin source). Reaching into `_canvas` is technically a private field, but stable since 2014.
+
+### 2026-04-26 — Migration to MapLibre + Protomaps; simplified to hotspot-only view
+- **Changed:** Replaced Leaflet stack with MapLibre GL JS + Protomaps vector tiles. Removed station markers, popups, and ranking. Heatmap now normalized within visible map bounds (locally relative) at neighborhood zoom; neighborhoods stay absolute at city zoom. Files: `src/Map.tsx` rewritten using `react-map-gl/maplibre` + `pmtiles` + `@protomaps/basemaps` (LIGHT flavor). Deleted `src/Heatmap.tsx`, `src/NeighborhoodLayer.tsx`, `src/leaflet-heat.d.ts`. Stripped `src/activity.ts` to expose only `score` on `StationActivity` (was `bikesIn`/`bikesOut`/`totalChurn`/`netInbound`/`category`/`rank`); stripped `src/neighborhoods.ts` `NeighborhoodActivity` to `totalScore` only and removed the now-unused `neighborhoodFillColor` helper. `src/App.tsx` slimmed; `src/index.css` lost popup rules; `CLAUDE.md` "Stack" and "Architecture" rewritten. Uninstalled `leaflet`, `react-leaflet`, `leaflet.heat`, `@types/leaflet`. Verified zero residual references via `grep -rni 'leaflet'` across `src/`, `public/`, `package.json` (all empty) and `grep -rnE 'L\.[A-Z]'` across `src/` (also empty).
+- **Why:** Smoother fluid zoom (vector tiles vs raster), simpler product focus on hotspot visualization, more meaningful local heat scaling so quiet neighborhoods aren't always invisible.
+- **Notable:** MapLibre native expressions (`['interpolate', ['linear'], ['zoom'], 14, …, 15, …]`) handle the layer crossfade GPU-side — no React state in the render path. The previous `_canvas` opacity hack was the signal it was time to migrate. Bundle nearly quadrupled (358 KB → 1.3 MB; 111 KB → 357 KB gzip) — MapLibre + the Protomaps theme spec dominates; code-splitting deferred. Protomaps demo PMTiles URL is a development crutch; pre-public-release migration to a self-hosted NYC extract is required. `protomaps-themes-base` is deprecated in favor of `@protomaps/basemaps` (newer API: `layers('source', LIGHT)` instead of `layers('source', 'light')`); installed the maintained one. Bounds-relative normalization fires on `moveend` (not per animation frame) — heat redistributes after the user stops panning, which feels fine in practice.
 
 ---
 
@@ -205,6 +232,13 @@ needing a real server. Documented in IDEAS.md.
   the activity model.** I asked partway through if GBFS provides historical
   data. The answer is no, and that constraint should have been clear from the
   start. Would have saved one or two iterations of the model.
+- **Starting with Leaflet was probably right; staying on it past phase 6 was
+  not.** Leaflet was familiar and got us to a working app five phases in. But
+  by the time I was reaching into `leaflet.heat`'s private `_canvas` field to
+  control opacity and the crossfade *still* felt steppy because raster zoom
+  doesn't truly interpolate, the signal was clear. The lesson isn't "should
+  have started with MapLibre" — it's "notice when you're working *against* a
+  library instead of with it, and migrate then, not three workarounds later."
 
 ### Things I learned about the work, not just the project
 

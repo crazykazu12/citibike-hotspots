@@ -10,7 +10,7 @@ Citi Bike hotspot web app. Displays a live map of NYC Citi Bike stations and vis
 
 ## Stack
 
-React + Vite + TypeScript, Leaflet (via react-leaflet), leaflet.heat for heatmaps.
+React + Vite + TypeScript. MapLibre GL JS (via `react-map-gl/maplibre`) for the map, Protomaps PMTiles + `@protomaps/basemaps` for the basemap, MapLibre's native heatmap layer for hotspot visualization.
 
 ## Commands
 
@@ -37,9 +37,15 @@ Merge on `station_id`. Status updates roughly every 30 seconds.
 
 Entry point: `index.html` → `src/main.tsx` → `src/App.tsx`.
 
-`leaflet.heat` has no `@types` package — a local `src/leaflet-heat.d.ts` declaration file is needed before importing it.
+MapLibre requires its CSS — `import 'maplibre-gl/dist/maplibre-gl.css'` is in `src/Map.tsx`.
 
-Leaflet requires its CSS to be imported explicitly; add `import 'leaflet/dist/leaflet.css'` before using any map components.
+PMTiles is registered as a custom protocol once at module scope in `src/Map.tsx` so MapLibre can resolve `pmtiles://` URLs. Guard against double-registration if HMR re-runs the module.
+
+Crossfade between neighborhood polygons (low zoom) and station heatmap (high zoom) uses MapLibre paint expressions — `['interpolate', ['linear'], ['zoom'], 14, …, 15, …]`. The map re-evaluates these every frame; no React state involved in the actual fade.
+
+Heatmap weight is normalized within the currently visible map bounds, recomputed in the React layer on `moveend`. Neighborhood color uses absolute (city-wide) score normalization.
+
+Tiles come from the Protomaps demo PMTiles bucket — fine for development, needs self-hosting before any public release.
 
 ## Project Journal
 A running log of decisions and changes lives in PROJECT_JOURNAL.md at the project root.

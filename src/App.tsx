@@ -29,7 +29,6 @@ function App() {
       <Map
         stations={stations}
         activity={activity}
-        snapshotCount={snapshotCount}
         neighborhoods={neighborhoods}
         neighborhoodActivity={neighborhoodActivity}
         maxNeighborhoodScore={maxNeighborhoodScore}

@@ -1,139 +1,221 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
-  MapContainer,
-  TileLayer,
-  CircleMarker,
-  Popup,
-  useMapEvents,
-} from 'react-leaflet'
-import 'leaflet/dist/leaflet.css'
+  Map as MaplibreMap,
+  Source,
+  Layer,
+  type MapEvent,
+  type ViewStateChangeEvent,
+} from 'react-map-gl/maplibre'
+import maplibregl, { type StyleSpecification } from 'maplibre-gl'
+import { Protocol } from 'pmtiles'
+import { layers as protomapsLayers, LIGHT } from '@protomaps/basemaps'
+import 'maplibre-gl/dist/maplibre-gl.css'
+import type { Feature, FeatureCollection, Point } from 'geojson'
 import type { Station } from './types'
 import type { StationActivity } from './activity'
-import type { NeighborhoodActivity, NeighborhoodFeatureCollection } from './neighborhoods'
-import { Heatmap } from './Heatmap'
-import { NeighborhoodLayer } from './NeighborhoodLayer'
+import type {
+  NeighborhoodActivity,
+  NeighborhoodFeatureCollection,
+  NeighborhoodProps,
+} from './neighborhoods'
 
-const INITIAL_ZOOM = 12
+const PMTILES_URL = 'https://demo-bucket.protomaps.com/v4.pmtiles'
 const NEIGHBORHOOD_ZOOM_MAX = 14
 const STATION_ZOOM_MIN = 15
-// Crossfade boundaries align with the threshold zoom levels above
-const TRANSITION_ZOOM_START = NEIGHBORHOOD_ZOOM_MAX
-const TRANSITION_ZOOM_END = STATION_ZOOM_MIN
+const INITIAL_LON = -73.99
+const INITIAL_LAT = 40.74
+const INITIAL_ZOOM = 12
+
+type MaplibreWithRegistry = typeof maplibregl & { _pmtilesRegistered?: boolean }
+const ml = maplibregl as MaplibreWithRegistry
+if (!ml._pmtilesRegistered) {
+  const protocol = new Protocol()
+  maplibregl.addProtocol('pmtiles', protocol.tile)
+  ml._pmtilesRegistered = true
+}
+
+const baseStyle: StyleSpecification = {
+  version: 8,
+  glyphs: 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf',
+  sources: {
+    protomaps: {
+      type: 'vector',
+      url: `pmtiles://${PMTILES_URL}`,
+      attribution:
+        '<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
+    },
+  },
+  layers: protomapsLayers('protomaps', LIGHT),
+}
+
+interface NeighborhoodFillProps extends NeighborhoodProps {
+  normalizedScore: number
+}
 
 interface MapProps {
   stations: Station[]
   activity: Map<string, StationActivity>
-  snapshotCount: number
   neighborhoods: NeighborhoodFeatureCollection | null
   neighborhoodActivity: Map<string, NeighborhoodActivity>
   maxNeighborhoodScore: number
 }
 
-function formatNet(n: number): string {
-  return n >= 0 ? `+${n}` : `${n}`
+type Bounds = [number, number, number, number]
+
+function buildNeighborhoodsGeoJson(
+  data: NeighborhoodFeatureCollection,
+  activity: Map<string, NeighborhoodActivity>,
+  maxScore: number,
+): FeatureCollection<Feature['geometry'], NeighborhoodFillProps> {
+  return {
+    type: 'FeatureCollection',
+    features: data.features.map((f) => {
+      const a = activity.get(f.properties.nta2020)
+      const normalizedScore = maxScore > 0 ? (a?.totalScore ?? 0) / maxScore : 0
+      return {
+        ...f,
+        properties: { ...f.properties, normalizedScore },
+      }
+    }),
+  } as FeatureCollection<Feature['geometry'], NeighborhoodFillProps>
 }
 
-function lerp(value: number, start: number, end: number): number {
-  if (end === start) return value >= end ? 1 : 0
-  return Math.max(0, Math.min(1, (value - start) / (end - start)))
-}
-
-function ZoomTracker({ onChange }: { onChange: (z: number) => void }) {
-  const map = useMapEvents({
-    zoom: () => onChange(map.getZoom()),
-    zoomend: () => onChange(map.getZoom()),
-  })
-  return null
+function buildStationsGeoJson(
+  stations: Station[],
+  activity: Map<string, StationActivity>,
+  bounds: Bounds | null,
+): FeatureCollection<Point, { normalizedWeight: number }> {
+  let visibleMax = 0
+  if (bounds) {
+    const [west, south, east, north] = bounds
+    for (const s of stations) {
+      if (s.lon < west || s.lon > east || s.lat < south || s.lat > north) continue
+      const score = activity.get(s.station_id)?.score ?? 0
+      if (score > visibleMax) visibleMax = score
+    }
+  }
+  return {
+    type: 'FeatureCollection',
+    features: stations.map((s) => {
+      const score = activity.get(s.station_id)?.score ?? 0
+      const normalizedWeight = visibleMax > 0 ? score / visibleMax : 0
+      return {
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
+        properties: { normalizedWeight },
+      }
+    }),
+  }
 }
 
 export function Map({
   stations,
   activity,
-  snapshotCount,
   neighborhoods,
   neighborhoodActivity,
   maxNeighborhoodScore,
 }: MapProps) {
+  const [bounds, setBounds] = useState<Bounds | null>(null)
   const [zoom, setZoom] = useState(INITIAL_ZOOM)
 
-  const t = lerp(zoom, TRANSITION_ZOOM_START, TRANSITION_ZOOM_END)
-  const fillOpacityMultiplier = 1 - t
-  const heatmapOpacity = t
+  const neighborhoodsGeoJson = useMemo(
+    () =>
+      neighborhoods
+        ? buildNeighborhoodsGeoJson(neighborhoods, neighborhoodActivity, maxNeighborhoodScore)
+        : null,
+    [neighborhoods, neighborhoodActivity, maxNeighborhoodScore],
+  )
 
-  const hasActivity = snapshotCount >= 2
-  let rankedCount = 0
-  for (const a of activity.values()) if (a.rank !== null) rankedCount++
+  const stationsGeoJson = useMemo(
+    () => buildStationsGeoJson(stations, activity, bounds),
+    [stations, activity, bounds],
+  )
+
+  function handleViewportSync(map: maplibregl.Map) {
+    const b = map.getBounds()
+    setBounds([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()])
+    setZoom(map.getZoom())
+  }
+
+  const onLoad = (e: MapEvent) => handleViewportSync(e.target)
+  const onMoveEnd = (e: ViewStateChangeEvent) => handleViewportSync(e.target)
 
   const legendText =
-    t < 0.5
-      ? 'Colored areas = neighborhood activity. Zoom in for station-level detail.'
-      : 'Hot zones = stations with active bike movement, weighted toward popular destinations.'
+    zoom < (NEIGHBORHOOD_ZOOM_MAX + STATION_ZOOM_MIN) / 2
+      ? 'Colored neighborhoods = busiest areas city-wide. Zoom in to see hotspots within an area.'
+      : 'Hot zones = stations active relative to what’s currently visible. Pan to re-scale.'
 
   return (
     <>
-      <MapContainer
-        center={[40.74, -73.99]}
-        zoom={INITIAL_ZOOM}
-        zoomSnap={0}
-        zoomDelta={0.25}
-        wheelPxPerZoomLevel={20}
-        style={{ height: '100vh', width: '100vw' }}
+      <MaplibreMap
+        initialViewState={{ longitude: INITIAL_LON, latitude: INITIAL_LAT, zoom: INITIAL_ZOOM }}
+        mapStyle={baseStyle}
+        onLoad={onLoad}
+        onMoveEnd={onMoveEnd}
+        style={{ width: '100vw', height: '100vh' }}
       >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
-        <ZoomTracker onChange={setZoom} />
-        {neighborhoods && (
-          <NeighborhoodLayer
-            data={neighborhoods}
-            activity={neighborhoodActivity}
-            maxScore={maxNeighborhoodScore}
-            fillOpacityMultiplier={fillOpacityMultiplier}
+        {neighborhoodsGeoJson && (
+          <Source id="neighborhoods" type="geojson" data={neighborhoodsGeoJson}>
+            <Layer
+              id="neighborhoods-fill"
+              type="fill"
+              paint={{
+                'fill-color': [
+                  'interpolate',
+                  ['linear'],
+                  ['coalesce', ['get', 'normalizedScore'], 0],
+                  0,
+                  '#3b82f6',
+                  1,
+                  '#ef4444',
+                ],
+                'fill-opacity': [
+                  'interpolate',
+                  ['linear'],
+                  ['zoom'],
+                  NEIGHBORHOOD_ZOOM_MAX,
+                  0.55,
+                  STATION_ZOOM_MIN,
+                  0,
+                ],
+              }}
+            />
+            <Layer
+              id="neighborhoods-outline"
+              type="line"
+              paint={{ 'line-color': '#888', 'line-width': 1 }}
+            />
+          </Source>
+        )}
+        <Source id="stations" type="geojson" data={stationsGeoJson}>
+          <Layer
+            id="stations-heat"
+            type="heatmap"
+            paint={{
+              'heatmap-weight': ['coalesce', ['get', 'normalizedWeight'], 0],
+              'heatmap-intensity': 1,
+              'heatmap-radius': [
+                'interpolate',
+                ['linear'],
+                ['zoom'],
+                NEIGHBORHOOD_ZOOM_MAX,
+                20,
+                17,
+                40,
+              ],
+              'heatmap-opacity': [
+                'interpolate',
+                ['linear'],
+                ['zoom'],
+                NEIGHBORHOOD_ZOOM_MAX,
+                0,
+                STATION_ZOOM_MIN,
+                1,
+              ],
+            }}
           />
-        )}
-        {heatmapOpacity > 0 && (
-          <Heatmap stations={stations} activity={activity} opacity={heatmapOpacity} />
-        )}
-        {stations.map((s) => {
-          const a = activity.get(s.station_id)
-          return (
-            <CircleMarker
-              key={s.station_id}
-              center={[s.lat, s.lon]}
-              radius={5}
-              pathOptions={{ color: '#1976d2', weight: 1, fillOpacity: 0.7 }}
-            >
-              <Popup>
-                <div className="station-popup">
-                  <strong>{s.name}</strong>
-                  <div>
-                    {s.num_bikes_available} / {s.capacity} bikes available
-                  </div>
-                  {hasActivity && a ? (
-                    <>
-                      <div>
-                        ↑ {a.bikesIn} bikes in, ↓ {a.bikesOut} bikes out (last 5 min)
-                      </div>
-                      <div>
-                        Net: {formatNet(a.netInbound)} ·{' '}
-                        {a.rank !== null
-                          ? `Activity rank: #${a.rank} of ${rankedCount}`
-                          : 'Not currently active'}
-                      </div>
-                      <div className="popup-caveat">
-                        Based on 30s polling — actual traffic may be higher during busy periods.
-                      </div>
-                    </>
-                  ) : (
-                    <div className="popup-gathering">Gathering activity data…</div>
-                  )}
-                </div>
-              </Popup>
-            </CircleMarker>
-          )
-        })}
-      </MapContainer>
+        </Source>
+      </MaplibreMap>
       <div className="legend">{legendText}</div>
     </>
   )
