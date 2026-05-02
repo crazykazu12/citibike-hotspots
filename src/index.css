@@ -131,3 +131,16 @@ code {
   border-radius: 999px;
   font-size: 13px;
 }
+
+.nbh-tooltip {
+  position: fixed;
+  pointer-events: none;
+  z-index: 1100;
+  transform: translate(-50%, -130%);
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.82);
+  color: #fff;
+  border-radius: 4px;
+  font-size: 13px;
+  white-space: nowrap;
+}

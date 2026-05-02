@@ -199,6 +199,19 @@ needing a real server. Documented in IDEAS.md.
 - **Why:** Smoother fluid zoom (vector tiles vs raster), simpler product focus on hotspot visualization, more meaningful local heat scaling so quiet neighborhoods aren't always invisible.
 - **Notable:** MapLibre native expressions (`['interpolate', ['linear'], ['zoom'], 14, …, 15, …]`) handle the layer crossfade GPU-side — no React state in the render path. The previous `_canvas` opacity hack was the signal it was time to migrate. Bundle nearly quadrupled (358 KB → 1.3 MB; 111 KB → 357 KB gzip) — MapLibre + the Protomaps theme spec dominates; code-splitting deferred. Protomaps demo PMTiles URL is a development crutch; pre-public-release migration to a self-hosted NYC extract is required. `protomaps-themes-base` is deprecated in favor of `@protomaps/basemaps` (newer API: `layers('source', LIGHT)` instead of `layers('source', 'light')`); installed the maintained one. Bounds-relative normalization fires on `moveend` (not per animation frame) — heat redistributes after the user stops panning, which feels fine in practice.
 
+### 2026-05-02 — Neighborhood interactivity + continuous heat zones
+- **Changed:** Added hover tooltip with neighborhood name. Click on a neighborhood now flies the camera to fit it. Heatmap parameters tuned (larger radius, intensity ramp, transparent cold-stop in color gradient) so adjacent active stations blend into continuous hot zones rather than discrete blobs.
+- **Why:** Hover gives users a way to identify neighborhoods (replaces the popups we removed). Click-to-zoom turns the city view into a navigation interface. Continuous heat better matches how bike traffic actually moves through space — it spreads and blends, not concentrates at discrete points.
+- **Notable:** Cold areas are deliberately transparent (not colored blue) so the basemap shows through quiet regions. `heatmap-radius` tuning is taste-driven — initial values are starting points. Tooltip is hidden at zoom ≥ 15 (heatmap dominant) so it doesn't compete with the station-level view. `interactiveLayerIds` on `<MaplibreMap>` plus a `mapRef.current.getMap().fitBounds(...)` call powers click-to-fit; bbox is computed in JS from feature geometry without pulling in `@turf/bbox`.
+
+### 2026-05-02 — Bump heatmap-radius +30
+- **Changed:** `heatmap-radius` zoom-interpolated values 35→65 (zoom 14) and 80→110 (zoom 17) in `src/Map.tsx`.
+- **Why:** Adjacent stations weren't blending enough at the smaller radius; +30 widens each station's contribution so neighbors fuse into one continuous warm zone.
+
+### 2026-05-02 — Bump heatmap-radius +50
+- **Changed:** `heatmap-radius` 65→115 (zoom 14) and 110→160 (zoom 17) in `src/Map.tsx`.
+- **Why:** Still too discrete at +30; pushing further to fully blend clusters.
+
 ---
 
 ## What I'd do differently
