@@ -3,6 +3,7 @@ import { Map } from './Map'
 import { useStationActivity } from './useStationActivity'
 import { WINDOW_SIZE } from './activity'
 import { computeNeighborhoodActivity } from './neighborhoods'
+import { USE_FIXTURES } from './gbfs'
 
 function App() {
   const { stations, neighborhoods, stationToNeighborhood, error, snapshotCount, activity } =
@@ -33,11 +34,12 @@ function App() {
         neighborhoodActivity={neighborhoodActivity}
         maxNeighborhoodScore={maxNeighborhoodScore}
       />
-      {snapshotCount < 2 && (
+      {snapshotCount < 2 && !USE_FIXTURES && (
         <div className="gathering-banner">
           Gathering activity data… ({snapshotCount} / {WINDOW_SIZE} snapshots)
         </div>
       )}
+      {USE_FIXTURES && <div className="fixture-badge">FIXTURE MODE — frozen data</div>}
     </>
   )
 }

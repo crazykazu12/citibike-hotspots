@@ -47,6 +47,22 @@ Heatmap weight is normalized within the currently visible map bounds, recomputed
 
 Tiles come from the Protomaps demo PMTiles bucket — fine for development, needs self-hosting before any public release.
 
+## Development: Fixture Mode
+
+For iterating on visualization parameters without waiting for the rolling window to refill (~5 min on live data), the app supports a fixture mode that replays pre-saved GBFS snapshots.
+
+**Enable** by setting `VITE_USE_FIXTURES=true` in `.env.local` (see `.env.local.example`). Restart `npm run dev`. The app loads `src/fixtures/stations.json` and `src/fixtures/snapshots.json` on startup, fills the rolling window instantly, and skips all subsequent polling so the heatmap stays frozen for stable visual comparison. A "FIXTURE MODE — frozen data" badge appears in the top-left so it's impossible to forget you're not on live data.
+
+**Capture new fixture data** by running the live app (no env var), waiting for the rolling window to fill (10 snapshots, ~5 min), then in DevTools:
+```js
+window.__downloadFixtures()
+```
+Two files (`snapshots.json`, `stations.json`) download to your machine; move them into `src/fixtures/` (overwriting the existing files).
+
+**Production safety**: the `VITE_USE_FIXTURES` check uses a Vite env var that becomes a string literal at build time. When unset, the entire fixture-loading branch (including the dynamic JSON imports) is dead-coded out of the production bundle — verified by `grep` against `dist/` after `npm run build`. The fixture JSON files are never included in production builds.
+
+The dev-globals (`window.__snapshots`, `window.__stations`, `window.__dumpFixtures`, `window.__downloadFixtures`) are also gated behind `import.meta.env.DEV` and tree-shake out of production.
+
 ## Project Journal
 A running log of decisions and changes lives in PROJECT_JOURNAL.md at the project root.
 After meaningful changes, append a Build Log entry there.

@@ -212,6 +212,11 @@ needing a real server. Documented in IDEAS.md.
 - **Changed:** `heatmap-radius` 65→115 (zoom 14) and 110→160 (zoom 17) in `src/Map.tsx`.
 - **Why:** Still too discrete at +30; pushing further to fully blend clusters.
 
+### 2026-05-02 — Fixture mode for visualization iteration
+- **Changed:** Added a development-only fixture mode that loads pre-saved GBFS snapshots instead of polling the live feed. Heatmap renders instantly at full fidelity, enabling rapid iteration on visual parameters without waiting for the rolling window to refill. Implemented across `src/dev-globals.d.ts` (Window augmentation), `src/useStationActivity.ts` (debug globals + fixture short-circuit), `src/gbfs.ts` (`USE_FIXTURES` flag + fixture branch in `fetchStations`), `src/App.tsx` (FIXTURE MODE badge), `src/index.css`, `.env.local.example`, `.gitignore` (explicit `.env.local` entries), and `CLAUDE.md` (Development: Fixture Mode section). Placeholder `src/fixtures/{snapshots,stations}.json` shipped as `[]` until real data is captured.
+- **Why:** Tuning heatmap radius, color stops, and zoom thresholds against live data was painful — every change required ~5 min of waiting per reload.
+- **Notable:** Controlled by `VITE_USE_FIXTURES` env var, never active in production. Visible badge in UI prevents misinterpreting frozen data as live. Implemented in two phases — debug globals first to enable data capture, then loader code that consumes the captured files. The capture path uses `window.__downloadFixtures()` which Blob-encodes the live state and triggers two file downloads — pasting large fixture JSON into chat got truncated by message length limits, so the in-browser download flow is the only practical capture path. Bundle hygiene: original gating used a re-exported `USE_FIXTURES` const, but Rollup didn't constant-fold across the module boundary, so it emitted a 30-byte orphan `snapshots-*.js` chunk. Inlining `import.meta.env.VITE_USE_FIXTURES === 'true'` directly at the call site lets Vite statically prove the branch dead and eliminate both the branch and its dynamic JSON import. Verified: production `dist/` contains only `index-*.css` and `index-*.js`, and `grep -oE "FIXTURE MODE|__dumpFixtures|fixtures/snapshots"` finds zero hits in the JS bundle.
+
 ---
 
 ## What I'd do differently
