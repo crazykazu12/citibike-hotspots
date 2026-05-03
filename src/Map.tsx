@@ -41,6 +41,10 @@ if (!ml._pmtilesRegistered) {
   ml._pmtilesRegistered = true
 }
 
+// LIGHT.water is #80deea (saturated cyan) in @protomaps/basemaps@5.7.2;
+// override to a muted pale blue-gray that doesn't compete with the heatmap.
+const lightFlavor = { ...LIGHT, water: '#cad2d3' }
+
 const baseStyle: StyleSpecification = {
   version: 8,
   glyphs: 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf',
@@ -52,7 +56,7 @@ const baseStyle: StyleSpecification = {
         '<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
     },
   },
-  layers: protomapsLayers('protomaps', LIGHT),
+  layers: protomapsLayers('protomaps', lightFlavor),
 }
 
 interface NeighborhoodFillProps extends NeighborhoodProps {
@@ -214,6 +218,7 @@ export function Map({
   }
 
   const onClick = (e: MapLayerMouseEvent) => {
+    if (e.target.getZoom() >= STATION_ZOOM_MIN) return
     const f = e.features?.[0]
     if (!f) return
     const geom = f.geometry
