@@ -15,6 +15,7 @@ import 'maplibre-gl/dist/maplibre-gl.css'
 import type { Feature, FeatureCollection, MultiPolygon, Point, Polygon } from 'geojson'
 import type { Station } from './types'
 import type { StationActivity } from './activity'
+import { computeConnectionPoints, type HeatPoint } from './connections'
 import type {
   NeighborhoodActivity,
   NeighborhoodFeatureCollection,
@@ -22,8 +23,8 @@ import type {
 } from './neighborhoods'
 
 const PMTILES_URL = 'https://demo-bucket.protomaps.com/v4.pmtiles'
-const NEIGHBORHOOD_ZOOM_MAX = 14
-const STATION_ZOOM_MIN = 15
+const NEIGHBORHOOD_ZOOM_MAX = 13
+const STATION_ZOOM_MIN = 14.5
 const HOVER_TOOLTIP_MAX_ZOOM = 15
 const FIT_BOUNDS_PADDING = 40
 const FIT_BOUNDS_DURATION_MS = 1000
@@ -92,9 +93,10 @@ function buildNeighborhoodsGeoJson(
   } as FeatureCollection<Feature['geometry'], NeighborhoodFillProps>
 }
 
-function buildStationsGeoJson(
+function buildHeatGeoJson(
   stations: Station[],
   activity: Map<string, StationActivity>,
+  connectionPoints: HeatPoint[],
   bounds: Bounds | null,
 ): FeatureCollection<Point, { normalizedWeight: number }> {
   let visibleMax = 0
@@ -105,19 +107,28 @@ function buildStationsGeoJson(
       const score = activity.get(s.station_id)?.score ?? 0
       if (score > visibleMax) visibleMax = score
     }
+    for (const p of connectionPoints) {
+      if (p.lon < west || p.lon > east || p.lat < south || p.lat > north) continue
+      if (p.weight > visibleMax) visibleMax = p.weight
+    }
   }
-  return {
-    type: 'FeatureCollection',
-    features: stations.map((s) => {
-      const score = activity.get(s.station_id)?.score ?? 0
-      const normalizedWeight = visibleMax > 0 ? score / visibleMax : 0
-      return {
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
-        properties: { normalizedWeight },
-      }
-    }),
+  const features: FeatureCollection<Point, { normalizedWeight: number }>['features'] = []
+  for (const s of stations) {
+    const score = activity.get(s.station_id)?.score ?? 0
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
+      properties: { normalizedWeight: visibleMax > 0 ? score / visibleMax : 0 },
+    })
   }
+  for (const p of connectionPoints) {
+    features.push({
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
+      properties: { normalizedWeight: visibleMax > 0 ? p.weight / visibleMax : 0 },
+    })
+  }
+  return { type: 'FeatureCollection', features }
 }
 
 function geometryBbox(geom: Polygon | MultiPolygon): Bounds {
@@ -157,9 +168,22 @@ export function Map({
     [neighborhoods, neighborhoodActivity, maxNeighborhoodScore],
   )
 
+  const connectionPoints = useMemo(() => {
+    const result = computeConnectionPoints(stations, activity)
+    if (import.meta.env.DEV) {
+      const { pairCount, groupCount } = result.stats
+      console.log(
+        `heat points: ${stations.length} stations + ${result.corridorPoints.length} corridor + ${result.clusterFillPoints.length} cluster fill (from ${
+          pairCount + groupCount
+        } clusters: ${pairCount} pairs, ${groupCount} groups)`,
+      )
+    }
+    return [...result.corridorPoints, ...result.clusterFillPoints]
+  }, [stations, activity])
+
   const stationsGeoJson = useMemo(
-    () => buildStationsGeoJson(stations, activity, bounds),
-    [stations, activity, bounds],
+    () => buildHeatGeoJson(stations, activity, connectionPoints, bounds),
+    [stations, activity, connectionPoints, bounds],
   )
 
   function handleViewportSync(map: maplibregl.Map) {
@@ -253,11 +277,6 @@ export function Map({
                 ],
               }}
             />
-            <Layer
-              id="neighborhoods-outline"
-              type="line"
-              paint={{ 'line-color': '#888', 'line-width': 1 }}
-            />
           </Source>
         )}
         <Source id="stations" type="geojson" data={stationsGeoJson}>
@@ -280,9 +299,9 @@ export function Map({
                 ['linear'],
                 ['zoom'],
                 NEIGHBORHOOD_ZOOM_MAX,
-                115,
+                40,
                 17,
-                160,
+                70,
               ],
               'heatmap-color': [
                 'interpolate',
@@ -313,6 +332,14 @@ export function Map({
             }}
           />
         </Source>
+        {neighborhoodsGeoJson && (
+          <Layer
+            id="neighborhoods-outline"
+            type="line"
+            source="neighborhoods"
+            paint={{ 'line-color': '#888', 'line-width': 1 }}
+          />
+        )}
       </MaplibreMap>
       {hover && (
         <div className="nbh-tooltip" style={{ left: hover.x, top: hover.y }}>
