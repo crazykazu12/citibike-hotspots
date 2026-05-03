@@ -11,10 +11,12 @@ export interface StationActivity {
   score: number
 }
 
-// Score = total churn * destination multiplier across the rolling window.
-// total churn / net inbound are computed locally per station and not retained,
-// since only `score` is rendered. |delta| is a lower-bound estimate of real
-// churn — simultaneous arrivals/departures within a 30s poll cancel out.
+// Score = total churn × destination multiplier across the rolling window.
+// Destination weighting answers "where are people going" rather than "where
+// are bikes moving" — net-outflow stations (e.g. subway exits during AM rush)
+// are commute origins, not hotspots. |delta| is a lower-bound estimate of
+// real churn since simultaneous arrivals/departures within a 30s poll cancel
+// out.
 export function computeActivity(
   snapshots: StatusSnapshot[],
 ): Map<string, StationActivity> {

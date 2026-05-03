@@ -292,7 +292,7 @@ export function Map({
                 NEIGHBORHOOD_ZOOM_MAX,
                 0.6,
                 17,
-                1.5,
+                1.2,
               ],
               'heatmap-radius': [
                 'interpolate',
@@ -301,7 +301,7 @@ export function Map({
                 NEIGHBORHOOD_ZOOM_MAX,
                 40,
                 17,
-                70,
+                140,
               ],
               'heatmap-color': [
                 'interpolate',
@@ -316,9 +316,9 @@ export function Map({
                 0.5,
                 'rgba(253, 219, 199, 0.8)',
                 0.7,
-                'rgba(244, 109, 67, 0.9)',
+                'rgba(244, 109, 67, 0.75)',
                 1,
-                'rgba(178, 24, 43, 1)',
+                'rgba(178, 24, 43, 0.7)',
               ],
               'heatmap-opacity': [
                 'interpolate',
