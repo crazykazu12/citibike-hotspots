@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { USE_FIXTURES } from './gbfs'
 import type { ViewMode } from './Map'
+import type { ThemeId } from './themes'
 
 const TICK_INTERVAL_MS = 5000
 
@@ -8,6 +9,8 @@ interface HeaderProps {
   lastSnapshotAt: number | null
   viewMode: ViewMode
   onViewModeChange: (mode: ViewMode) => void
+  themeId: ThemeId
+  onThemeChange: (id: ThemeId) => void
 }
 
 function formatRelative(deltaMs: number): string {
@@ -20,7 +23,13 @@ function formatRelative(deltaMs: number): string {
   return `Updated ${h}h ago`
 }
 
-export function Header({ lastSnapshotAt, viewMode, onViewModeChange }: HeaderProps) {
+export function Header({
+  lastSnapshotAt,
+  viewMode,
+  onViewModeChange,
+  themeId,
+  onThemeChange,
+}: HeaderProps) {
   const [, forceTick] = useState(0)
 
   useEffect(() => {
@@ -42,6 +51,26 @@ export function Header({ lastSnapshotAt, viewMode, onViewModeChange }: HeaderPro
         <p className="app-subtitle">Real-time Citi Bike activity across NYC</p>
       </div>
       <div className="app-header-right">
+        <div className="view-toggle theme-picker" role="tablist" aria-label="Theme">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={themeId === 'light'}
+            className={themeId === 'light' ? 'active' : ''}
+            onClick={() => onThemeChange('light')}
+          >
+            Light
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={themeId === 'dark'}
+            className={themeId === 'dark' ? 'active' : ''}
+            onClick={() => onThemeChange('dark')}
+          >
+            Dark
+          </button>
+        </div>
         <div className="view-toggle" role="tablist" aria-label="View mode">
           <button
             type="button"

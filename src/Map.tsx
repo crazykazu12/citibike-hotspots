@@ -10,15 +10,17 @@ import {
 } from 'react-map-gl/maplibre'
 import maplibregl, {
   type DataDrivenPropertyValueSpecification,
+  type ExpressionSpecification,
   type StyleSpecification,
 } from 'maplibre-gl'
 import { Protocol } from 'pmtiles'
-import { layers as protomapsLayers, LIGHT } from '@protomaps/basemaps'
+import { layers as protomapsLayers } from '@protomaps/basemaps'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { Feature, FeatureCollection, MultiPolygon, Point, Polygon } from 'geojson'
 import type { Station } from './types'
 import type { StationActivity } from './activity'
 import { computeConnectionPoints, type HeatPoint } from './connections'
+import type { Theme } from './themes'
 import type {
   NeighborhoodActivity,
   NeighborhoodFeatureCollection,
@@ -52,22 +54,22 @@ if (!ml._pmtilesRegistered) {
   ml._pmtilesRegistered = true
 }
 
-// LIGHT.water is #80deea (saturated cyan) in @protomaps/basemaps@5.7.2;
-// override to a muted pale blue-gray that doesn't compete with the heatmap.
-const lightFlavor = { ...LIGHT, water: '#cad2d3' }
-
-const baseStyle: StyleSpecification = {
-  version: 8,
-  glyphs: 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf',
-  sources: {
-    protomaps: {
-      type: 'vector',
-      url: `pmtiles://${PMTILES_URL}`,
-      attribution:
-        '<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
+// LIGHT.water in @protomaps/basemaps@5.7.2 defaults to a saturated cyan; the
+// theme objects spread the flavor and override `water` (and any future keys).
+function buildBaseStyle(theme: Theme): StyleSpecification {
+  return {
+    version: 8,
+    glyphs: 'https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf',
+    sources: {
+      protomaps: {
+        type: 'vector',
+        url: `pmtiles://${PMTILES_URL}`,
+        attribution:
+          '<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>',
+      },
     },
-  },
-  layers: protomapsLayers('protomaps', lightFlavor),
+    layers: protomapsLayers('protomaps', theme.protomapsFlavor),
+  }
 }
 
 const ALL_ZONES_OPACITY: DataDrivenPropertyValueSpecification<number> = [
@@ -94,9 +96,9 @@ const HOT_ONLY_OPACITY: DataDrivenPropertyValueSpecification<number> = [
       ['linear'],
       ['coalesce', ['get', 'normalizedScore'], 0],
       HOT_ONLY_THRESHOLD,
-      0.4,
+      0.3,
       1,
-      0.85,
+      0.65,
     ],
   ],
   STATION_ZOOM_MIN,
@@ -114,6 +116,7 @@ interface MapProps {
   neighborhoodActivity: Map<string, NeighborhoodActivity>
   maxNeighborhoodScore: number
   viewMode: ViewMode
+  theme: Theme
 }
 
 interface HoverState {
@@ -204,7 +207,28 @@ export function Map({
   neighborhoodActivity,
   maxNeighborhoodScore,
   viewMode,
+  theme,
 }: MapProps) {
+  const baseStyle = useMemo(() => buildBaseStyle(theme), [theme])
+  const fillColorExpr = useMemo<DataDrivenPropertyValueSpecification<string>>(
+    () => [
+      'interpolate',
+      ['linear'],
+      ['coalesce', ['get', 'normalizedScore'], 0],
+      ...theme.overlays.neighborhoodColorScale.flat(),
+    ],
+    [theme],
+  )
+  const heatmapColorExpr = useMemo<ExpressionSpecification>(
+    () =>
+      [
+        'interpolate',
+        ['linear'],
+        ['heatmap-density'],
+        ...theme.overlays.heatmapColorStops.flat(),
+      ] as unknown as ExpressionSpecification,
+    [theme],
+  )
   const mapRef = useRef<MapRef>(null)
   const [bounds, setBounds] = useState<Bounds | null>(null)
   const [zoom, setZoom] = useState(INITIAL_ZOOM)
@@ -319,15 +343,7 @@ export function Map({
               id="neighborhoods-fill"
               type="fill"
               paint={{
-                'fill-color': [
-                  'interpolate',
-                  ['linear'],
-                  ['coalesce', ['get', 'normalizedScore'], 0],
-                  0,
-                  '#3b82f6',
-                  1,
-                  '#ef4444',
-                ],
+                'fill-color': fillColorExpr,
                 'fill-opacity': viewMode === 'hot' ? HOT_ONLY_OPACITY : ALL_ZONES_OPACITY,
               }}
             />
@@ -357,23 +373,7 @@ export function Map({
                 17,
                 140,
               ],
-              'heatmap-color': [
-                'interpolate',
-                ['linear'],
-                ['heatmap-density'],
-                0,
-                'rgba(0, 0, 0, 0)',
-                0.1,
-                'rgba(33, 102, 172, 0.4)',
-                0.3,
-                'rgba(103, 169, 207, 0.6)',
-                0.5,
-                'rgba(253, 219, 199, 0.8)',
-                0.7,
-                'rgba(244, 109, 67, 0.75)',
-                1,
-                'rgba(178, 24, 43, 0.7)',
-              ],
+              'heatmap-color': heatmapColorExpr,
               'heatmap-opacity': [
                 'interpolate',
                 ['linear'],
@@ -391,7 +391,7 @@ export function Map({
             id="neighborhoods-outline"
             type="line"
             source="neighborhoods"
-            paint={{ 'line-color': '#888', 'line-width': 1 }}
+            paint={{ 'line-color': theme.overlays.neighborhoodOutline, 'line-width': 1 }}
           />
         )}
       </MaplibreMap>
