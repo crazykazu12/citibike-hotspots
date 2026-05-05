@@ -2,11 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-# Citi Bike Hotspot Web App
+# Where in the Citi?
 
 ## Project
 
-Citi Bike hotspot web app. Displays a live map of NYC Citi Bike stations and visualizes hotspots (stations with lots of bikes piling up or running out).
+"Where in the Citi?" — a real-time visualization of NYC Citi Bike activity. Displays a live map of stations and surfaces hotspots (areas with lots of bikes piling up or running out). The app was previously named "Citi Bike Hotspots"; the npm package name (`citi-bikes`) is the repo identifier and is intentionally unchanged.
 
 ## Stack
 

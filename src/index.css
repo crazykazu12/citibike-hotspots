@@ -105,7 +105,7 @@ code {
 
 .legend {
   position: fixed;
-  top: 12px;
+  top: 68px;
   right: 12px;
   z-index: 1000;
   max-width: 260px;
@@ -145,18 +145,87 @@ code {
   white-space: nowrap;
 }
 
-.fixture-badge {
+.app-header {
   position: fixed;
-  top: 12px;
-  left: 12px;
-  z-index: 1100;
-  padding: 6px 12px;
-  background: #f59e0b;
-  color: #1f1300;
-  border-radius: 4px;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 56px;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  font-family: var(--sans);
+  box-sizing: border-box;
+}
+
+.app-header-left {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+.app-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #08060d;
+  white-space: nowrap;
+  line-height: 1.1;
+}
+
+.app-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: #6b6375;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.2;
+}
+
+.app-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.updated-indicator {
   font-size: 12px;
+  color: #6b6375;
+  font-variant-numeric: tabular-nums;
+}
+
+.updated-indicator.fixture {
+  color: #92400e;
+  background: rgba(245, 158, 11, 0.18);
+  padding: 4px 10px;
+  border-radius: 999px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+}
+
+@media (max-width: 560px) {
+  .app-header {
+    padding: 0 12px;
+  }
+  .app-subtitle {
+    display: none;
+  }
+}
+
+@media (max-width: 380px) {
+  .app-title {
+    font-size: 16px;
+  }
+  .updated-indicator {
+    font-size: 11px;
+  }
 }

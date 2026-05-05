@@ -1,13 +1,21 @@
 import { useMemo } from 'react'
 import { Map } from './Map'
+import { Header } from './Header'
 import { useStationActivity } from './useStationActivity'
 import { WINDOW_SIZE } from './activity'
 import { computeNeighborhoodActivity } from './neighborhoods'
 import { USE_FIXTURES } from './gbfs'
 
 function App() {
-  const { stations, neighborhoods, stationToNeighborhood, error, snapshotCount, activity } =
-    useStationActivity()
+  const {
+    stations,
+    neighborhoods,
+    stationToNeighborhood,
+    error,
+    snapshotCount,
+    activity,
+    lastSnapshotAt,
+  } = useStationActivity()
 
   const neighborhoodActivity = useMemo(
     () => computeNeighborhoodActivity(activity, stationToNeighborhood),
@@ -27,6 +35,7 @@ function App() {
 
   return (
     <>
+      <Header lastSnapshotAt={lastSnapshotAt} />
       <Map
         stations={stations}
         activity={activity}
@@ -39,7 +48,6 @@ function App() {
           Gathering activity data… ({snapshotCount} / {WINDOW_SIZE} snapshots)
         </div>
       )}
-      {USE_FIXTURES && <div className="fixture-badge">FIXTURE MODE — frozen data</div>}
     </>
   )
 }

@@ -25,6 +25,7 @@ interface HookResult {
   error: string | null
   snapshotCount: number
   activity: Map<string, StationActivity>
+  lastSnapshotAt: number | null
 }
 
 export function useStationActivity(): HookResult {
@@ -34,6 +35,7 @@ export function useStationActivity(): HookResult {
   const [error, setError] = useState<string | null>(null)
   const [snapshotCount, setSnapshotCount] = useState(0)
   const [activity, setActivity] = useState<Map<string, StationActivity>>(new Map())
+  const [lastSnapshotAt, setLastSnapshotAt] = useState<number | null>(null)
 
   const snapshotsRef = useRef<StatusSnapshot[]>([])
 
@@ -45,6 +47,7 @@ export function useStationActivity(): HookResult {
       snapshotsRef.current = next
       setSnapshotCount(next.length)
       setActivity(computeActivity(next))
+      setLastSnapshotAt(Date.now())
       if (import.meta.env.DEV) {
         window.__snapshots = next
       }
@@ -136,5 +139,13 @@ export function useStationActivity(): HookResult {
     }
   }, [])
 
-  return { stations, neighborhoods, stationToNeighborhood, error, snapshotCount, activity }
+  return {
+    stations,
+    neighborhoods,
+    stationToNeighborhood,
+    error,
+    snapshotCount,
+    activity,
+    lastSnapshotAt,
+  }
 }

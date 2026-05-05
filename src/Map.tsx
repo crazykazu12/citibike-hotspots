@@ -28,9 +28,14 @@ const STATION_ZOOM_MIN = 14.5
 const HOVER_TOOLTIP_MAX_ZOOM = 15
 const FIT_BOUNDS_PADDING = 40
 const FIT_BOUNDS_DURATION_MS = 1000
-const INITIAL_LON = -73.99
-const INITIAL_LAT = 40.74
-const INITIAL_ZOOM = 12
+const INITIAL_CENTER: [number, number] = [-73.94, 40.7]
+const INITIAL_ZOOM = 9.8
+const MIN_ZOOM = 9.8
+const MAX_ZOOM = 18
+const MAX_BOUNDS: [[number, number], [number, number]] = [
+  [-74.3, 40.45],
+  [-73.65, 40.95],
+]
 const INTERACTIVE_LAYER_IDS = ['neighborhoods-fill']
 
 type MaplibreWithRegistry = typeof maplibregl & { _pmtilesRegistered?: boolean }
@@ -245,7 +250,14 @@ export function Map({
     <>
       <MaplibreMap
         ref={mapRef}
-        initialViewState={{ longitude: INITIAL_LON, latitude: INITIAL_LAT, zoom: INITIAL_ZOOM }}
+        initialViewState={{
+          longitude: INITIAL_CENTER[0],
+          latitude: INITIAL_CENTER[1],
+          zoom: INITIAL_ZOOM,
+        }}
+        minZoom={MIN_ZOOM}
+        maxZoom={MAX_ZOOM}
+        maxBounds={MAX_BOUNDS}
         mapStyle={baseStyle}
         interactiveLayerIds={INTERACTIVE_LAYER_IDS}
         cursor={hover ? 'pointer' : ''}
@@ -254,7 +266,7 @@ export function Map({
         onMouseMove={onMouseMove}
         onMouseLeave={onMouseLeave}
         onClick={onClick}
-        style={{ width: '100vw', height: '100vh' }}
+        style={{ width: '100vw', height: 'calc(100vh - 56px)', marginTop: 56 }}
       >
         {neighborhoodsGeoJson && (
           <Source id="neighborhoods" type="geojson" data={neighborhoodsGeoJson}>
