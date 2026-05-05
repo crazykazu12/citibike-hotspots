@@ -28,13 +28,13 @@ const STATION_ZOOM_MIN = 14.5
 const HOVER_TOOLTIP_MAX_ZOOM = 15
 const FIT_BOUNDS_PADDING = 40
 const FIT_BOUNDS_DURATION_MS = 1000
-const INITIAL_CENTER: [number, number] = [-73.94, 40.7]
-const INITIAL_ZOOM = 9.8
-const MIN_ZOOM = 9.8
+const INITIAL_CENTER: [number, number] = [-73.94, 40.73]
+const INITIAL_ZOOM = 8.25
+const MIN_ZOOM = 8.25
 const MAX_ZOOM = 18
 const MAX_BOUNDS: [[number, number], [number, number]] = [
-  [-74.3, 40.45],
-  [-73.65, 40.95],
+  [-74.7, 40.2],
+  [-73.2, 41.2],
 ]
 const INTERACTIVE_LAYER_IDS = ['neighborhoods-fill']
 
