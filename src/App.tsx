@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { Map } from './Map'
+import { useMemo, useState } from 'react'
+import { Map, type ViewMode } from './Map'
 import { Header } from './Header'
 import { useStationActivity } from './useStationActivity'
 import { WINDOW_SIZE } from './activity'
@@ -16,6 +16,8 @@ function App() {
     activity,
     lastSnapshotAt,
   } = useStationActivity()
+
+  const [viewMode, setViewMode] = useState<ViewMode>('all')
 
   const neighborhoodActivity = useMemo(
     () => computeNeighborhoodActivity(activity, stationToNeighborhood),
@@ -35,13 +37,18 @@ function App() {
 
   return (
     <>
-      <Header lastSnapshotAt={lastSnapshotAt} />
+      <Header
+        lastSnapshotAt={lastSnapshotAt}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+      />
       <Map
         stations={stations}
         activity={activity}
         neighborhoods={neighborhoods}
         neighborhoodActivity={neighborhoodActivity}
         maxNeighborhoodScore={maxNeighborhoodScore}
+        viewMode={viewMode}
       />
       {snapshotCount < 2 && !USE_FIXTURES && (
         <div className="gathering-banner">

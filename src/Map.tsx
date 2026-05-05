@@ -8,7 +8,10 @@ import {
   type MapRef,
   type ViewStateChangeEvent,
 } from 'react-map-gl/maplibre'
-import maplibregl, { type StyleSpecification } from 'maplibre-gl'
+import maplibregl, {
+  type DataDrivenPropertyValueSpecification,
+  type StyleSpecification,
+} from 'maplibre-gl'
 import { Protocol } from 'pmtiles'
 import { layers as protomapsLayers, LIGHT } from '@protomaps/basemaps'
 import 'maplibre-gl/dist/maplibre-gl.css'
@@ -22,9 +25,12 @@ import type {
   NeighborhoodProps,
 } from './neighborhoods'
 
+export type ViewMode = 'all' | 'hot'
+
 const PMTILES_URL = 'https://demo-bucket.protomaps.com/v4.pmtiles'
 const NEIGHBORHOOD_ZOOM_MAX = 13
 const STATION_ZOOM_MIN = 14.5
+const HOT_ONLY_THRESHOLD = 0.35
 const HOVER_TOOLTIP_MAX_ZOOM = 15
 const FIT_BOUNDS_PADDING = 40
 const FIT_BOUNDS_DURATION_MS = 1000
@@ -64,6 +70,39 @@ const baseStyle: StyleSpecification = {
   layers: protomapsLayers('protomaps', lightFlavor),
 }
 
+const ALL_ZONES_OPACITY: DataDrivenPropertyValueSpecification<number> = [
+  'interpolate',
+  ['linear'],
+  ['zoom'],
+  NEIGHBORHOOD_ZOOM_MAX,
+  0.55,
+  STATION_ZOOM_MIN,
+  0,
+]
+
+const HOT_ONLY_OPACITY: DataDrivenPropertyValueSpecification<number> = [
+  'interpolate',
+  ['linear'],
+  ['zoom'],
+  NEIGHBORHOOD_ZOOM_MAX,
+  [
+    'case',
+    ['<', ['coalesce', ['get', 'normalizedScore'], 0], HOT_ONLY_THRESHOLD],
+    0,
+    [
+      'interpolate',
+      ['linear'],
+      ['coalesce', ['get', 'normalizedScore'], 0],
+      HOT_ONLY_THRESHOLD,
+      0.4,
+      1,
+      0.85,
+    ],
+  ],
+  STATION_ZOOM_MIN,
+  0,
+]
+
 interface NeighborhoodFillProps extends NeighborhoodProps {
   normalizedScore: number
 }
@@ -74,6 +113,7 @@ interface MapProps {
   neighborhoods: NeighborhoodFeatureCollection | null
   neighborhoodActivity: Map<string, NeighborhoodActivity>
   maxNeighborhoodScore: number
+  viewMode: ViewMode
 }
 
 interface HoverState {
@@ -163,6 +203,7 @@ export function Map({
   neighborhoods,
   neighborhoodActivity,
   maxNeighborhoodScore,
+  viewMode,
 }: MapProps) {
   const mapRef = useRef<MapRef>(null)
   const [bounds, setBounds] = useState<Bounds | null>(null)
@@ -226,6 +267,8 @@ export function Map({
     if (e.target.getZoom() >= STATION_ZOOM_MIN) return
     const f = e.features?.[0]
     if (!f) return
+    const props = f.properties as NeighborhoodFillProps
+    if (viewMode === 'hot' && (props.normalizedScore ?? 0) < HOT_ONLY_THRESHOLD) return
     const geom = f.geometry
     if (geom.type !== 'Polygon' && geom.type !== 'MultiPolygon') return
     const map = mapRef.current?.getMap()
@@ -243,7 +286,9 @@ export function Map({
 
   const legendText =
     zoom < (NEIGHBORHOOD_ZOOM_MAX + STATION_ZOOM_MIN) / 2
-      ? 'Colored neighborhoods = busiest areas city-wide. Click one to zoom in.'
+      ? viewMode === 'hot'
+        ? 'Showing only the busiest neighborhoods citywide. Click one to zoom in.'
+        : 'Colored neighborhoods = busiest areas city-wide. Click one to zoom in.'
       : 'Hot zones = stations active relative to what’s currently visible. Pan to re-scale.'
 
   return (
@@ -283,15 +328,7 @@ export function Map({
                   1,
                   '#ef4444',
                 ],
-                'fill-opacity': [
-                  'interpolate',
-                  ['linear'],
-                  ['zoom'],
-                  NEIGHBORHOOD_ZOOM_MAX,
-                  0.55,
-                  STATION_ZOOM_MIN,
-                  0,
-                ],
+                'fill-opacity': viewMode === 'hot' ? HOT_ONLY_OPACITY : ALL_ZONES_OPACITY,
               }}
             />
           </Source>

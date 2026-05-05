@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react'
 import { USE_FIXTURES } from './gbfs'
+import type { ViewMode } from './Map'
 
 const TICK_INTERVAL_MS = 5000
 
 interface HeaderProps {
   lastSnapshotAt: number | null
+  viewMode: ViewMode
+  onViewModeChange: (mode: ViewMode) => void
 }
 
 function formatRelative(deltaMs: number): string {
@@ -17,7 +20,7 @@ function formatRelative(deltaMs: number): string {
   return `Updated ${h}h ago`
 }
 
-export function Header({ lastSnapshotAt }: HeaderProps) {
+export function Header({ lastSnapshotAt, viewMode, onViewModeChange }: HeaderProps) {
   const [, forceTick] = useState(0)
 
   useEffect(() => {
@@ -39,6 +42,26 @@ export function Header({ lastSnapshotAt }: HeaderProps) {
         <p className="app-subtitle">Real-time Citi Bike activity across NYC</p>
       </div>
       <div className="app-header-right">
+        <div className="view-toggle" role="tablist" aria-label="View mode">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={viewMode === 'all'}
+            className={viewMode === 'all' ? 'active' : ''}
+            onClick={() => onViewModeChange('all')}
+          >
+            All zones
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={viewMode === 'hot'}
+            className={viewMode === 'hot' ? 'active' : ''}
+            onClick={() => onViewModeChange('hot')}
+          >
+            Hot only
+          </button>
+        </div>
         <span className={USE_FIXTURES ? 'updated-indicator fixture' : 'updated-indicator'}>
           {indicator}
         </span>
