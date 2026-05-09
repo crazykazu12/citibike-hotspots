@@ -1,0 +1,19 @@
+{
+  "name": "where-in-the-citi-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --test-scheduled",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail",
+    "db:schema": "wrangler d1 execute where-in-the-citi-data --remote --file=schema.sql",
+    "db:count": "wrangler d1 execute where-in-the-citi-data --remote --command=\"SELECT COUNT(*), MIN(captured_at), MAX(captured_at) FROM raw_snapshots\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250503.0",
+    "typescript": "^5.6.0",
+    "wrangler": "^3.80.0"
+  }
+}

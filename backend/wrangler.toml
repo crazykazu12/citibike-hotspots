@@ -1,0 +1,12 @@
+name = "where-in-the-citi-backend"
+main = "src/index.ts"
+compatibility_date = "2026-05-01"
+
+# Polls GBFS every minute; daily cleanup of raw snapshots > 24h at 03:00 UTC.
+[triggers]
+crons = ["* * * * *", "0 3 * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "where-in-the-citi-data"
+database_id = "3ec86814-5e8e-4d0e-8ce6-f62b2d2584d7"
