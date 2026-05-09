@@ -11,12 +11,16 @@ once the API endpoints land in Session 3.
 - **D1** — SQLite-compatible serverless database
 - **Wrangler** — Cloudflare's CLI for local dev + deploy
 
-## What this Worker does today (Session 1)
+## What this Worker does
 
-- Cron `* * * * *` (every minute): fetch `station_status.json`, write ~2000 rows
+- Cron `* * * * *` (every minute): fetch `station_status.json`, write ~2300 rows
   to `raw_snapshots` via a single batched transaction.
-- Cron `0 3 * * *` (daily, 03:00 UTC): delete `raw_snapshots` rows older than
-  24 hours. Older history will live in 15-minute aggregates, added in Session 2.
+- Cron `*/15 * * * *` (every 15 min): aggregate the just-completed 15-minute
+  bucket of `raw_snapshots` into `station_buckets` (per-station activity score)
+  and `neighborhood_buckets` (per-NTA totals). Activity formula matches the
+  frontend's `src/activity.ts` (total_churn × destination_multiplier).
+- Cron `0 3 * * *` (daily, 03:00 UTC): delete `raw_snapshots` older than 24h
+  and `*_buckets` older than 7 days.
 
 ## Local development
 
@@ -30,6 +34,11 @@ wrangler d1 create where-in-the-citi-data
 
 # Apply schema to the remote DB
 npm run db:schema
+
+# One-time-ish: populate the station→neighborhood mapping table from the
+# current GBFS station_information feed and the NYC NTA GeoJSON. Re-run
+# whenever the station network changes meaningfully.
+npm run setup:stations
 
 # Run the Worker locally; visit /__scheduled?cron=*+*+*+*+* to fire the poll cron
 npm run dev
@@ -68,9 +77,16 @@ logs `cleanup ok cutoff=<unix> deleted=<n>`.
 ```
 backend/
   src/
-    index.ts    — scheduled() entry; dispatches by cron string
-    gbfs.ts     — fetchSnapshotRows(capturedAt)
-    db.ts       — insertSnapshots(), deleteOlderThan()
-  schema.sql    — raw_snapshots table + index
-  wrangler.toml — Worker name, crons, D1 binding
+    index.ts        — scheduled() entry; dispatches by cron string
+    gbfs.ts         — fetchSnapshotRows(capturedAt)
+    db.ts           — insertSnapshots(), runRetentionCleanup()
+    aggregation.ts  — bucketStartFor(), computeStationBuckets(), runAggregation()
+  scripts/
+    populate-stations-neighborhoods.ts  — one-time-ish: stations→NTA mapping
+  data/
+    nyc-neighborhoods.geojson           — NYC NTA2020 polygons (synced from
+                                          frontend's public/data/)
+  schema.sql        — raw_snapshots, station_buckets, neighborhood_buckets,
+                      stations_neighborhoods (with capacity)
+  wrangler.toml     — Worker name, three crons, D1 binding
 ```

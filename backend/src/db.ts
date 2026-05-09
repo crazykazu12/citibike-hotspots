@@ -20,3 +20,29 @@ export async function deleteOlderThan(db: D1Database, cutoffSeconds: number): Pr
     .run()
   return result.meta.changes ?? 0
 }
+
+export interface CleanupResult {
+  rawSnapshotsDeleted: number
+  stationBucketsDeleted: number
+  neighborhoodBucketsDeleted: number
+}
+
+export async function runRetentionCleanup(
+  db: D1Database,
+  nowSeconds: number,
+): Promise<CleanupResult> {
+  const rawCutoff = nowSeconds - 24 * 3600
+  const bucketCutoff = nowSeconds - 7 * 24 * 3600
+
+  const [raw, sb, nb] = await db.batch([
+    db.prepare('DELETE FROM raw_snapshots WHERE captured_at < ?').bind(rawCutoff),
+    db.prepare('DELETE FROM station_buckets WHERE bucket_start < ?').bind(bucketCutoff),
+    db.prepare('DELETE FROM neighborhood_buckets WHERE bucket_start < ?').bind(bucketCutoff),
+  ])
+
+  return {
+    rawSnapshotsDeleted: raw.meta.changes ?? 0,
+    stationBucketsDeleted: sb.meta.changes ?? 0,
+    neighborhoodBucketsDeleted: nb.meta.changes ?? 0,
+  }
+}
