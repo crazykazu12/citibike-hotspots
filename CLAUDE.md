@@ -19,8 +19,10 @@ Single repo, two top-level apps with separate `package.json` files and dependenc
 - **Backend** — `/backend` — Cloudflare Workers + D1 database. Entry: `backend/src/index.ts`.
 
 **Deployment:**
-- Frontend: planned for Vercel; not yet deployed.
+- Frontend: deployed to Vercel (URL set after first deploy).
 - Backend: deployed to Cloudflare at `where-in-the-citi-backend.kazumasa-umemoto.workers.dev`.
+
+**Data flow (post-Session 3):** the frontend fetches from the backend's `/current` endpoint every 30s and renders the pre-computed activity. It no longer calls GBFS directly. The activity formula in `src/activity.ts` is fixture-mode-only and tree-shakes out of production builds.
 
 ## Data Sources
 
@@ -90,17 +92,19 @@ Zoom-aware crossfade between two views:
 
 ## Frontend Development: Fixture Mode
 
-Set `VITE_USE_FIXTURES=true` in `.env.local` to load pre-saved snapshots from `src/fixtures/` instead of polling GBFS. Use for visual iteration without waiting for the rolling window to fill. **Never enable in production builds.**
+Set `VITE_USE_FIXTURES=true` in `.env.local` to load `src/fixtures/current.json` instead of polling the backend. Use for visual iteration without round-trips. **Never enable in production builds.**
 
-When enabled, the app loads `src/fixtures/stations.json` and `src/fixtures/snapshots.json` on startup, fills the rolling window instantly, and skips all subsequent polling so the visualization stays frozen for stable comparison. A "Fixture mode — frozen data" pill appears in the header indicator slot.
+When enabled, the app one-shot-loads the fixture, sets state once, and skips all subsequent polling. A "Fixture mode — frozen data" pill appears in the header indicator slot.
 
-**Capture new fixtures** by running the live app (no env var), waiting for the rolling window to fill, then in DevTools:
+**Capture new fixtures** in DevTools (in non-fixture mode):
 ```js
-window.__downloadFixtures()
+await window.__downloadFixtures()
 ```
-Two files (`snapshots.json`, `stations.json`) download; move them into `src/fixtures/` (overwriting). The function uses `Object.fromEntries(map)` to serialize Map snapshots into plain JSON objects (see Gotchas).
+A `current.json` file downloads; move it into `src/fixtures/` (overwriting).
 
-**Production safety:** the `VITE_USE_FIXTURES` check is a Vite env var inlined as a string literal at build time. When `false`/unset, the entire fixture branch — including dynamic JSON imports — is dead-coded out of the bundle. The dev-globals (`window.__snapshots`, `__stations`, `__dumpFixtures`, `__downloadFixtures`) are gated behind `import.meta.env.DEV` and tree-shake out of production.
+**Production safety:** the `VITE_USE_FIXTURES` check is a Vite env var inlined as a string literal at build time. When `false`/unset, the entire fixture branch — including the dynamic JSON import — is dead-coded out of the bundle. The dev-global `window.__downloadFixtures` is gated behind `import.meta.env.DEV` and tree-shakes out of production.
+
+The fixture file is a saved `/current` API response, so fixture mode and live mode share the same downstream code path post-fetch — fixture mode genuinely tests production rendering.
 
 ## Backend Architecture
 

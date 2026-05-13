@@ -56,3 +56,18 @@ CREATE TABLE IF NOT EXISTS stations_neighborhoods (
   neighborhood_id TEXT NOT NULL,
   capacity INTEGER NOT NULL DEFAULT 0
 );
+
+-- Cached station facts from GBFS station_information.json. Populated by the
+-- same populator script that writes stations_neighborhoods. The /current and
+-- /comparison API endpoints join through this table for lat/lon/name in
+-- responses, so the frontend doesn't need to fetch GBFS directly.
+-- NOTE: capacity is duplicated with stations_neighborhoods.capacity. Both are
+-- written atomically by the populator so they can't drift; consolidating into
+-- a single source of truth is a future cleanup.
+CREATE TABLE IF NOT EXISTS station_info (
+  station_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  lat REAL NOT NULL,
+  lon REAL NOT NULL,
+  capacity INTEGER NOT NULL DEFAULT 0
+);

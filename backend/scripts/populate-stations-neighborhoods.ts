@@ -24,6 +24,7 @@ const BATCH_SIZE = 200 // SQL statements per shell-out (avoid command-line lengt
 
 interface RawStationInfo {
   station_id: string
+  name: string
   lat: number
   lon: number
   capacity?: number
@@ -57,7 +58,15 @@ async function main(): Promise<void> {
   >
   console.log(`got ${geo.features.length} neighborhood features`)
 
-  const mapped: Array<{ station_id: string; neighborhood_id: string; capacity: number }> = []
+  interface MappedRow {
+    station_id: string
+    neighborhood_id: string
+    name: string
+    lat: number
+    lon: number
+    capacity: number
+  }
+  const mapped: MappedRow[] = []
   let unmatched = 0
   for (const s of stations) {
     const pt = point([s.lon, s.lat])
@@ -75,6 +84,9 @@ async function main(): Promise<void> {
     mapped.push({
       station_id: s.station_id,
       neighborhood_id: match.properties.nta2020,
+      name: s.name,
+      lat: s.lat,
+      lon: s.lon,
       capacity: s.capacity ?? 0,
     })
   }
@@ -82,14 +94,21 @@ async function main(): Promise<void> {
   if (mapped.length === 0) throw new Error('no stations mapped — refusing to clobber')
 
   // Batch the INSERTs into multiple SQL files; each fed to wrangler d1 execute.
+  // Each batch writes BOTH stations_neighborhoods AND station_info atomically
+  // so the two tables can't drift between runs.
   const tmp = mkdtempSync(join(tmpdir(), 'witc-stations-'))
   let totalApplied = 0
   for (let i = 0; i < mapped.length; i += BATCH_SIZE) {
     const slice = mapped.slice(i, i + BATCH_SIZE)
-    const lines = slice.map(
-      (m) =>
+    const lines: string[] = []
+    for (const m of slice) {
+      lines.push(
         `INSERT OR REPLACE INTO stations_neighborhoods (station_id, neighborhood_id, capacity) VALUES ('${escape(m.station_id)}', '${escape(m.neighborhood_id)}', ${Math.floor(m.capacity)});`,
-    )
+      )
+      lines.push(
+        `INSERT OR REPLACE INTO station_info (station_id, name, lat, lon, capacity) VALUES ('${escape(m.station_id)}', '${escape(m.name)}', ${m.lat}, ${m.lon}, ${Math.floor(m.capacity)});`,
+      )
+    }
     const file = join(tmp, `batch-${i}.sql`)
     writeFileSync(file, lines.join('\n'))
     execFileSync('npx', ['wrangler', 'd1', 'execute', DB_NAME, '--remote', `--file=${file}`], {
@@ -99,7 +118,7 @@ async function main(): Promise<void> {
     console.log(`applied ${totalApplied}/${mapped.length}`)
   }
   rmSync(tmp, { recursive: true, force: true })
-  console.log(`done — ${totalApplied} rows upserted`)
+  console.log(`done — ${totalApplied} stations upserted into both tables`)
 }
 
 main().catch((err) => {

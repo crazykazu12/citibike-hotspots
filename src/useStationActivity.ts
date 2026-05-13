@@ -1,132 +1,124 @@
-import { useEffect, useRef, useState } from 'react'
-import { fetchStations, fetchStationStatus } from './gbfs'
-import {
-  POLL_INTERVAL_MS,
-  WINDOW_SIZE,
-  computeActivity,
-  type StationActivity,
-  type StatusSnapshot,
-} from './activity'
+import { useEffect, useState } from 'react'
+import { fetchCurrent, USE_FIXTURES, type CurrentResponse } from './api'
+import type { StationActivity } from './activity'
 import {
   loadNeighborhoods,
-  assignStationsToNeighborhoods,
+  type NeighborhoodActivity,
   type NeighborhoodFeatureCollection,
 } from './neighborhoods'
-import type { RawStationStatus, Station } from './types'
+import type { Station } from './types'
 
-function toSnapshot(statuses: Pick<RawStationStatus, 'station_id' | 'num_bikes_available'>[]): StatusSnapshot {
-  return new Map(statuses.map((s) => [s.station_id, s.num_bikes_available]))
-}
+const POLL_INTERVAL_MS = 30_000
 
 interface HookResult {
   stations: Station[] | null
   neighborhoods: NeighborhoodFeatureCollection | null
-  stationToNeighborhood: Map<string, string>
   error: string | null
-  snapshotCount: number
   activity: Map<string, StationActivity>
+  neighborhoodActivity: Map<string, NeighborhoodActivity>
+  maxNeighborhoodScore: number
   lastSnapshotAt: number | null
+}
+
+interface ReshapedCurrent {
+  stations: Station[]
+  activity: Map<string, StationActivity>
+  neighborhoodActivity: Map<string, NeighborhoodActivity>
+  maxNeighborhoodScore: number
+  lastSnapshotAt: number
+}
+
+function reshape(res: CurrentResponse): ReshapedCurrent {
+  const stations: Station[] = res.stations.map((s) => ({
+    station_id: s.station_id,
+    name: s.name,
+    lat: s.lat,
+    lon: s.lon,
+    capacity: s.capacity,
+  }))
+
+  const activity = new Map<string, StationActivity>()
+  for (const s of res.stations) {
+    activity.set(s.station_id, { score: s.activity_score })
+  }
+
+  const neighborhoodActivity = new Map<string, NeighborhoodActivity>()
+  let maxNeighborhoodScore = 0
+  for (const n of res.neighborhoods) {
+    neighborhoodActivity.set(n.neighborhood_id, { totalScore: n.total_activity })
+    if (n.total_activity > maxNeighborhoodScore) maxNeighborhoodScore = n.total_activity
+  }
+
+  return {
+    stations,
+    activity,
+    neighborhoodActivity,
+    maxNeighborhoodScore,
+    lastSnapshotAt: res.computed_at * 1000,
+  }
 }
 
 export function useStationActivity(): HookResult {
   const [stations, setStations] = useState<Station[] | null>(null)
   const [neighborhoods, setNeighborhoods] = useState<NeighborhoodFeatureCollection | null>(null)
-  const [stationToNeighborhood, setStationToNeighborhood] = useState<Map<string, string>>(new Map())
   const [error, setError] = useState<string | null>(null)
-  const [snapshotCount, setSnapshotCount] = useState(0)
   const [activity, setActivity] = useState<Map<string, StationActivity>>(new Map())
+  const [neighborhoodActivity, setNeighborhoodActivity] = useState<Map<string, NeighborhoodActivity>>(
+    new Map(),
+  )
+  const [maxNeighborhoodScore, setMaxNeighborhoodScore] = useState(0)
   const [lastSnapshotAt, setLastSnapshotAt] = useState<number | null>(null)
-
-  const snapshotsRef = useRef<StatusSnapshot[]>([])
 
   useEffect(() => {
     let cancelled = false
 
-    function pushSnapshot(snap: StatusSnapshot) {
-      const next = [...snapshotsRef.current, snap].slice(-WINDOW_SIZE)
-      snapshotsRef.current = next
-      setSnapshotCount(next.length)
-      setActivity(computeActivity(next))
-      setLastSnapshotAt(Date.now())
-      if (import.meta.env.DEV) {
-        window.__snapshots = next
-      }
+    function applyResponse(res: CurrentResponse) {
+      const r = reshape(res)
+      setStations(r.stations)
+      setActivity(r.activity)
+      setNeighborhoodActivity(r.neighborhoodActivity)
+      setMaxNeighborhoodScore(r.maxNeighborhoodScore)
+      setLastSnapshotAt(r.lastSnapshotAt)
     }
 
     if (import.meta.env.DEV) {
-      window.__dumpFixtures = () => ({
-        snapshots: (window.__snapshots ?? []).map((m) => Object.fromEntries(m)),
-        stations: window.__stations ?? [],
-      })
-      window.__downloadFixtures = () => {
-        const dump = window.__dumpFixtures!()
-        const trigger = (filename: string, body: unknown) => {
-          const blob = new Blob([JSON.stringify(body, null, 2)], { type: 'application/json' })
-          const url = URL.createObjectURL(blob)
-          const a = document.createElement('a')
-          a.href = url
-          a.download = filename
-          document.body.appendChild(a)
-          a.click()
-          document.body.removeChild(a)
-          URL.revokeObjectURL(url)
-        }
-        trigger('snapshots.json', dump.snapshots)
-        // Stagger so the browser doesn't drop the second download as a duplicate.
-        setTimeout(() => trigger('stations.json', dump.stations), 250)
+      window.__downloadFixtures = async () => {
+        const res = await fetchCurrent()
+        const blob = new Blob([JSON.stringify(res, null, 2)], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = 'current.json'
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
       }
     }
 
-    Promise.all([fetchStations(), loadNeighborhoods()])
-      .then(async ([s, nbh]) => {
+    Promise.all([fetchCurrent(), loadNeighborhoods()])
+      .then(([res, nbh]) => {
         if (cancelled) return
-        setStations(s)
-        if (import.meta.env.DEV) {
-          window.__stations = s
-        }
+        applyResponse(res)
         setNeighborhoods(nbh)
-        setStationToNeighborhood(assignStationsToNeighborhoods(s, nbh))
-
-        if (import.meta.env.VITE_USE_FIXTURES === 'true') {
-          // Replay the captured snapshot window so the rolling buffer is full instantly.
-          // No subsequent polls — the heatmap stays frozen for stable visual comparison.
-          // Dynamic import is inlined here (not exported from a separate module) so
-          // the entire branch + its JSON chunk dead-code-eliminates in production builds.
-          const data = await import('./fixtures/snapshots.json')
-          const fixtureSnaps = data.default as Record<string, number>[]
-          for (const snap of fixtureSnaps) {
-            if (cancelled) return
-            pushSnapshot(new Map(Object.entries(snap)))
-          }
-        } else {
-          pushSnapshot(toSnapshot(s))
-        }
       })
       .catch((err: unknown) => {
         if (cancelled) return
         setError(err instanceof Error ? err.message : String(err))
       })
 
-    if (import.meta.env.VITE_USE_FIXTURES === 'true') {
+    if (USE_FIXTURES) {
+      // Fixture mode: one-shot load, no polling — frozen state for visual iteration.
       return () => {
         cancelled = true
       }
     }
 
     const id = setInterval(() => {
-      fetchStationStatus()
-        .then((statuses) => {
+      fetchCurrent()
+        .then((res) => {
           if (cancelled) return
-          pushSnapshot(toSnapshot(statuses))
-          const statusMap = new Map(statuses.map((s) => [s.station_id, s]))
-          setStations((prev) =>
-            prev === null
-              ? prev
-              : prev.map((s) => {
-                  const status = statusMap.get(s.station_id)
-                  return status ? { ...s, ...status } : s
-                }),
-          )
+          applyResponse(res)
         })
         .catch(() => {
           // transient poll failures are ignored; next tick will retry
@@ -142,10 +134,10 @@ export function useStationActivity(): HookResult {
   return {
     stations,
     neighborhoods,
-    stationToNeighborhood,
     error,
-    snapshotCount,
     activity,
+    neighborhoodActivity,
+    maxNeighborhoodScore,
     lastSnapshotAt,
   }
 }

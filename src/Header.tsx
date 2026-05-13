@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { USE_FIXTURES } from './gbfs'
+import { USE_FIXTURES } from './api'
 import type { ViewMode } from './Map'
 import type { ThemeId } from './themes'
 
