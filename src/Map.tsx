@@ -214,20 +214,24 @@ function buildHeatGeoJson(
   stations: Station[],
   activity: Map<string, StationActivity>,
   connectionPoints: HeatPoint[],
-  bounds: Bounds | null,
 ): FeatureCollection<Point, { normalizedWeight: number }> {
-  let visibleMax = 0
-  if (bounds) {
-    const [west, south, east, north] = bounds
-    for (const s of stations) {
-      if (s.lon < west || s.lon > east || s.lat < south || s.lat > north) continue
-      const score = activity.get(s.station_id)?.score ?? 0
-      if (score > visibleMax) visibleMax = score
-    }
-    for (const p of connectionPoints) {
-      if (p.lon < west || p.lon > east || p.lat < south || p.lat > north) continue
-      if (p.weight > visibleMax) visibleMax = p.weight
-    }
+  // Citywide-max normalization (basis = max station score OR connection-point
+  // weight across the full dataset). Previously this was viewport-relative
+  // (visible-only max) and re-run on every moveend; that crashed all other
+  // bubbles' normalized weight below the heatmap-color visible-density floor
+  // whenever a hot station entered the viewport. The original "feels fine"
+  // bounds-relative design (2026-04-26 migration journal entry) did not hold
+  // up on live data — see PROJECT_JOURNAL 2026-05-22 "switched to global
+  // station-max normalization" entry. Tradeoff: outer-borough heat is dimmer
+  // relative to citywide hotspots; revisit with quantile normalization if it
+  // becomes a problem.
+  let globalMax = 0
+  for (const s of stations) {
+    const score = activity.get(s.station_id)?.score ?? 0
+    if (score > globalMax) globalMax = score
+  }
+  for (const p of connectionPoints) {
+    if (p.weight > globalMax) globalMax = p.weight
   }
   const features: FeatureCollection<Point, { normalizedWeight: number }>['features'] = []
   for (const s of stations) {
@@ -235,14 +239,14 @@ function buildHeatGeoJson(
     features.push({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
-      properties: { normalizedWeight: visibleMax > 0 ? score / visibleMax : 0 },
+      properties: { normalizedWeight: globalMax > 0 ? score / globalMax : 0 },
     })
   }
   for (const p of connectionPoints) {
     features.push({
       type: 'Feature',
       geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
-      properties: { normalizedWeight: visibleMax > 0 ? p.weight / visibleMax : 0 },
+      properties: { normalizedWeight: globalMax > 0 ? p.weight / globalMax : 0 },
     })
   }
   return { type: 'FeatureCollection', features }
@@ -333,7 +337,6 @@ export function Map({
     [theme],
   )
   const mapRef = useRef<MapRef>(null)
-  const [bounds, setBounds] = useState<Bounds | null>(null)
   const [zoom, setZoom] = useState(INITIAL_ZOOM)
   const [hover, setHover] = useState<HoverState | null>(null)
 
@@ -367,18 +370,16 @@ export function Map({
   }, [stations, activity, comparisonActive])
 
   const stationsGeoJson = useMemo(
-    () => buildHeatGeoJson(stations, activity, connectionPoints, bounds),
-    [stations, activity, connectionPoints, bounds],
+    () => buildHeatGeoJson(stations, activity, connectionPoints),
+    [stations, activity, connectionPoints],
   )
 
-  function handleViewportSync(map: maplibregl.Map) {
-    const b = map.getBounds()
-    setBounds([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()])
+  function handleZoomSync(map: maplibregl.Map) {
     setZoom(map.getZoom())
   }
 
-  const onLoad = (e: MapEvent) => handleViewportSync(e.target)
-  const onMoveEnd = (e: ViewStateChangeEvent) => handleViewportSync(e.target)
+  const onLoad = (e: MapEvent) => handleZoomSync(e.target)
+  const onMoveEnd = (e: ViewStateChangeEvent) => handleZoomSync(e.target)
 
   const onMouseMove = (e: MapLayerMouseEvent) => {
     if (e.target.getZoom() >= HOVER_TOOLTIP_MAX_ZOOM) {
