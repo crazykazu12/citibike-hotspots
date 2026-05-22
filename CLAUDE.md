@@ -71,7 +71,7 @@ The destination multiplier is intentional: it's a product decision about what "h
 
 - **Frontend live view:** rolling 15-minute window of 30-second snapshots.
 - **Backend bucket aggregates:** fixed 15-minute boundaries (xx:00, xx:15, xx:30, xx:45).
-- **Polling cadence:** frontend 30s, backend 60s (cost optimization — 60 snapshots vs 30 per 15-min bucket isn't a meaningful precision difference).
+- **Polling cadence:** frontend 30s, backend 60s. Sparse-insert filter (only write rows whose `bikes_available` changed since the last stored value) drops ~80-90% of writes vs naive dense inserts, keeping 1-min polling within the 50M/month included D1 write allowance (~11.6M/month observed).
 
 ## Visualization Model
 
@@ -121,7 +121,7 @@ stations_neighborhoods -- station→neighborhood mapping with capacity
 
 | Cron | Purpose |
 |---|---|
-| `* * * * *` | Polls GBFS, writes ~2,300 raw snapshot rows via `db.batch()` |
+| `* * * * *` | Polls GBFS, fetches all ~2,300 stations, writes only the ~50-500 with a changed `bikes_available` value (sparse-insert filter in `pollAndWrite`) via `db.batch()` |
 | `*/15 * * * *` | Aggregates the just-completed bucket into `station_buckets` and `neighborhood_buckets` |
 | `0 3 * * *` | Daily cleanup: `raw_snapshots > 24h`, bucket tables `> 7 days` |
 
@@ -239,12 +239,17 @@ npm run setup:stations
 9. Convex hull cluster fills with radial gradient
 10. **Backend Session 1:** Cloudflare Workers + D1 scaffolding, GBFS polling cron
 11. **Backend Session 2:** Wrangler 4 upgrade, 15-min activity aggregation, station→neighborhood mapping
+12. **Backend Session 3:** Read API (`/current`, `/comparison`) + frontend integration + Vercel deploy
+13. **Backend Session 4:** Comparison-mode UI (today vs yesterday)
+14. **Backend Session 5:** Sparse-insert poll handler + seed-row aggregation query (shipped 2026-05-22)
 
 ## What's Next
 
-- **Backend Session 3:** Read API (current state + comparison endpoints), frontend integration, deploy frontend to Vercel.
-- **Backend Session 4:** Comparison-mode UI on frontend (today vs yesterday, this week vs last week).
-- **Future:** Custom themes beyond light/dark, mobile responsive layout, deeper time comparisons.
+- **Data collection is active** (1-min sparse polling). `backend/wrangler.toml` `[triggers].crons = ["* * * * *", "*/15 * * * *", "0 3 * * *"]`. The 2026-05-12 "pause" documented in `PROJECT_JOURNAL.md` was never actually deployed (working-tree-only); see the 2026-05-22 correction entry for the full timeline.
+- **Backend Session 3:** *(done)* Read API + frontend integration + deploy to Vercel.
+- **Backend Session 4:** *(done)* Comparison-mode UI (today vs yesterday).
+- **Backend Session 5:** *(done, deployed 2026-05-22)* Sparse-insert poll handler + seed-row aggregation query. Sparse-insert verified live (~50-500 rows/poll vs ~2,300 dense). Seed-row aggregation structurally working; first post-deploy bucket activity is transiently inflated until ~03:00 UTC cleanup removes stale 2026-05-12 seed rows.
+- **Future:** Deeper time comparisons (`lastweek`), mobile responsive layout, custom themes beyond light/dark.
 
 ## Project Journal
 
