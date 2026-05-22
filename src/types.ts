@@ -5,3 +5,5 @@ export interface Station {
   lon: number
   capacity: number
 }
+
+export type ComparisonMode = 'none' | 'yesterday'

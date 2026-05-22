@@ -10,6 +10,14 @@ export interface ThemeOverlays {
   heatmapColorStops: Array<[number, string]>
   // Color of the thin neighborhood polygon outlines.
   neighborhoodOutline: string
+  // Three-stop diverging scale for comparison-mode polygon fills, keyed on
+  // signed deltaPercent. Order: [-CAP, cold color], [0, transparent], [CAP, hot color].
+  // The MapLibre interpolate naturally clamps inputs beyond the boundary stops.
+  comparisonColorScale: [
+    [number, string],
+    [number, string],
+    [number, string],
+  ]
 }
 
 export interface ThemeUi {
@@ -59,6 +67,11 @@ export const THEMES: Record<ThemeId, Theme> = {
         [1, 'rgba(178, 24, 43, 0.7)'],
       ],
       neighborhoodOutline: '#888',
+      comparisonColorScale: [
+        [-200, '#1e40af'],
+        [0, 'rgba(0,0,0,0)'],
+        [200, '#dc2626'],
+      ],
     },
     ui: {
       headerBg: 'rgba(255, 255, 255, 0.85)',
@@ -97,6 +110,11 @@ export const THEMES: Record<ThemeId, Theme> = {
         [1, 'rgba(239, 68, 68, 0.9)'],
       ],
       neighborhoodOutline: 'rgba(255, 255, 255, 0.5)',
+      comparisonColorScale: [
+        [-200, '#1e40af'],
+        [0, 'rgba(0,0,0,0)'],
+        [200, '#dc2626'],
+      ],
     },
     ui: {
       headerBg: 'rgba(20, 22, 28, 0.85)',

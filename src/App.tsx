@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react'
 import { Map, type ViewMode } from './Map'
 import { Header } from './Header'
 import { useStationActivity } from './useStationActivity'
-import { USE_FIXTURES } from './api'
 import { THEMES, type ThemeId } from './themes'
+import type { ComparisonMode } from './types'
 
 function detectInitialTheme(): ThemeId {
   if (typeof window === 'undefined' || !window.matchMedia) return 'light'
@@ -11,6 +11,10 @@ function detectInitialTheme(): ThemeId {
 }
 
 function App() {
+  const [viewMode, setViewMode] = useState<ViewMode>('all')
+  const [themeId, setThemeId] = useState<ThemeId>(detectInitialTheme)
+  const [comparisonMode, setComparisonMode] = useState<ComparisonMode>('none')
+
   const {
     stations,
     neighborhoods,
@@ -19,10 +23,9 @@ function App() {
     neighborhoodActivity,
     maxNeighborhoodScore,
     lastSnapshotAt,
-  } = useStationActivity()
+    noBaselineData,
+  } = useStationActivity({ comparisonMode })
 
-  const [viewMode, setViewMode] = useState<ViewMode>('all')
-  const [themeId, setThemeId] = useState<ThemeId>(detectInitialTheme)
   const theme = THEMES[themeId]
 
   useEffect(() => {
@@ -33,8 +36,17 @@ function App() {
     }
   }, [themeId, theme])
 
+  // Hot Only is meaningless in comparison mode — force All Zones on entry.
+  // On exit (yesterday → now) we don't restore the prior state; user can
+  // re-pick Hot Only if they want it.
+  useEffect(() => {
+    if (comparisonMode === 'yesterday') setViewMode('all')
+  }, [comparisonMode])
+
   if (error) return <p>Error loading activity data: {error}</p>
   if (!stations) return <p>Loading…</p>
+
+  const showNoBaselineBanner = comparisonMode === 'yesterday' && noBaselineData
 
   return (
     <>
@@ -44,6 +56,8 @@ function App() {
         onViewModeChange={setViewMode}
         themeId={themeId}
         onThemeChange={setThemeId}
+        comparisonMode={comparisonMode}
+        onComparisonChange={setComparisonMode}
       />
       <Map
         stations={stations}
@@ -52,9 +66,14 @@ function App() {
         neighborhoodActivity={neighborhoodActivity}
         maxNeighborhoodScore={maxNeighborhoodScore}
         viewMode={viewMode}
+        comparisonMode={comparisonMode}
         theme={theme}
       />
-      {USE_FIXTURES && import.meta.env.DEV && null /* fixture pill is in the header */}
+      {showNoBaselineBanner && (
+        <div className="comparison-status-banner">
+          Yesterday's data not yet available — comes online after 24h of polling.
+        </div>
+      )}
     </>
   )
 }

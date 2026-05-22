@@ -11,6 +11,9 @@ export type NeighborhoodFeatureCollection = FeatureCollection<Polygon | MultiPol
 
 export interface NeighborhoodActivity {
   totalScore: number
+  // Set only in comparison mode. null means the neighborhood had no baseline
+  // data → polygon renders fully transparent.
+  deltaPercent?: number | null
 }
 
 export async function loadNeighborhoods(): Promise<NeighborhoodFeatureCollection> {

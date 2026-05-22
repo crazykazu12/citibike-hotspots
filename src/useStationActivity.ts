@@ -1,14 +1,22 @@
 import { useEffect, useState } from 'react'
-import { fetchCurrent, USE_FIXTURES, type CurrentResponse } from './api'
+import {
+  fetchComparison,
+  fetchCurrent,
+  USE_FIXTURES,
+  type ComparisonResponse,
+  type CurrentResponse,
+} from './api'
 import type { StationActivity } from './activity'
 import {
   loadNeighborhoods,
   type NeighborhoodActivity,
   type NeighborhoodFeatureCollection,
 } from './neighborhoods'
-import type { Station } from './types'
+import type { ComparisonMode, Station } from './types'
 
-const POLL_INTERVAL_MS = 30_000
+// 1-min cadence matches the backend's `* * * * *` poll. Backend data refreshes
+// every minute; the Worker's edge cache (max-age=30) absorbs any over-polling.
+const POLL_INTERVAL_MS = 60_000
 
 interface HookResult {
   stations: Station[] | null
@@ -18,17 +26,21 @@ interface HookResult {
   neighborhoodActivity: Map<string, NeighborhoodActivity>
   maxNeighborhoodScore: number
   lastSnapshotAt: number | null
+  // True when in yesterday mode and every neighborhood has null baseline data.
+  // Drives the "data not yet available" status banner.
+  noBaselineData: boolean
 }
 
-interface ReshapedCurrent {
+interface Reshaped {
   stations: Station[]
   activity: Map<string, StationActivity>
   neighborhoodActivity: Map<string, NeighborhoodActivity>
   maxNeighborhoodScore: number
   lastSnapshotAt: number
+  noBaselineData: boolean
 }
 
-function reshape(res: CurrentResponse): ReshapedCurrent {
+function reshapeCurrent(res: CurrentResponse): Reshaped {
   const stations: Station[] = res.stations.map((s) => ({
     station_id: s.station_id,
     name: s.name,
@@ -36,29 +48,79 @@ function reshape(res: CurrentResponse): ReshapedCurrent {
     lon: s.lon,
     capacity: s.capacity,
   }))
+  const activity = new Map<string, StationActivity>()
+  for (const s of res.stations) activity.set(s.station_id, { score: s.activity_score })
+
+  const neighborhoodActivity = new Map<string, NeighborhoodActivity>()
+  let max = 0
+  for (const n of res.neighborhoods) {
+    neighborhoodActivity.set(n.neighborhood_id, { totalScore: n.total_activity })
+    if (n.total_activity > max) max = n.total_activity
+  }
+  return {
+    stations,
+    activity,
+    neighborhoodActivity,
+    maxNeighborhoodScore: max,
+    lastSnapshotAt: res.computed_at * 1000,
+    noBaselineData: false,
+  }
+}
+
+function reshapeComparison(res: ComparisonResponse): Reshaped {
+  // The comparison response doesn't carry capacity per station — set 0 since
+  // nothing renders it in comparison mode (the heatmap + cluster layers are
+  // hidden in yesterday mode).
+  const stations: Station[] = res.stations.map((s) => ({
+    station_id: s.station_id,
+    name: s.name,
+    lat: s.lat,
+    lon: s.lon,
+    capacity: 0,
+  }))
 
   const activity = new Map<string, StationActivity>()
   for (const s of res.stations) {
-    activity.set(s.station_id, { score: s.activity_score })
+    const hasBaseline = s.baseline_activity !== null && s.delta !== null
+    activity.set(s.station_id, {
+      // |delta| as the score so existing MIN_CONNECTION_ACTIVITY threshold
+      // logic in connections.ts naturally filters out stations without
+      // baseline data. In practice the heatmap/cluster layers are also
+      // hidden in yesterday mode, so this is defense in depth.
+      score: hasBaseline ? Math.abs(s.delta as number) : 0,
+      hasBaseline,
+    })
   }
 
   const neighborhoodActivity = new Map<string, NeighborhoodActivity>()
-  let maxNeighborhoodScore = 0
+  let max = 0
+  let anyBaseline = false
   for (const n of res.neighborhoods) {
-    neighborhoodActivity.set(n.neighborhood_id, { totalScore: n.total_activity })
-    if (n.total_activity > maxNeighborhoodScore) maxNeighborhoodScore = n.total_activity
+    neighborhoodActivity.set(n.neighborhood_id, {
+      totalScore: n.current_activity,
+      // Unclamped — paint expression clamps via interpolate boundary
+      // stops; tooltip reads the raw value so users see the real number.
+      deltaPercent: n.delta_percent,
+    })
+    if (n.current_activity > max) max = n.current_activity
+    if (n.baseline_activity !== null) anyBaseline = true
   }
 
   return {
     stations,
     activity,
     neighborhoodActivity,
-    maxNeighborhoodScore,
+    maxNeighborhoodScore: max,
     lastSnapshotAt: res.computed_at * 1000,
+    noBaselineData: !anyBaseline,
   }
 }
 
-export function useStationActivity(): HookResult {
+export function useStationActivity({
+  comparisonMode,
+}: {
+  comparisonMode: ComparisonMode
+}): HookResult {
   const [stations, setStations] = useState<Station[] | null>(null)
   const [neighborhoods, setNeighborhoods] = useState<NeighborhoodFeatureCollection | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -68,17 +130,64 @@ export function useStationActivity(): HookResult {
   )
   const [maxNeighborhoodScore, setMaxNeighborhoodScore] = useState(0)
   const [lastSnapshotAt, setLastSnapshotAt] = useState<number | null>(null)
+  const [noBaselineData, setNoBaselineData] = useState(false)
 
+  // Neighborhoods GeoJSON is mode-independent — load once on mount.
   useEffect(() => {
     let cancelled = false
+    loadNeighborhoods()
+      .then((nbh) => {
+        if (!cancelled) setNeighborhoods(nbh)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
-    function applyResponse(res: CurrentResponse) {
-      const r = reshape(res)
+  // Poll the right endpoint based on mode. Mode change → re-run → abort
+  // in-flight fetch from the previous mode, clear stale Maps so the user
+  // sees an honest loading state for ~100-300ms.
+  useEffect(() => {
+    const controller = new AbortController()
+    let cancelled = false
+
+    setActivity(new Map())
+    setNeighborhoodActivity(new Map())
+    setMaxNeighborhoodScore(0)
+    setNoBaselineData(false)
+
+    function apply(r: Reshaped) {
+      if (cancelled) return
       setStations(r.stations)
       setActivity(r.activity)
       setNeighborhoodActivity(r.neighborhoodActivity)
       setMaxNeighborhoodScore(r.maxNeighborhoodScore)
       setLastSnapshotAt(r.lastSnapshotAt)
+      setNoBaselineData(r.noBaselineData)
+    }
+
+    function isAbort(err: unknown): boolean {
+      return err instanceof DOMException && err.name === 'AbortError'
+    }
+
+    function pollOnce(): Promise<void> {
+      if (comparisonMode === 'yesterday') {
+        return fetchComparison('yesterday', controller.signal)
+          .then((res) => apply(reshapeComparison(res)))
+          .catch((err: unknown) => {
+            if (isAbort(err) || cancelled) return
+            console.error('comparison poll failed', err)
+          })
+      }
+      return fetchCurrent(controller.signal)
+        .then((res) => apply(reshapeCurrent(res)))
+        .catch((err: unknown) => {
+          if (isAbort(err) || cancelled) return
+          console.error('current poll failed', err)
+        })
     }
 
     if (import.meta.env.DEV) {
@@ -96,40 +205,22 @@ export function useStationActivity(): HookResult {
       }
     }
 
-    Promise.all([fetchCurrent(), loadNeighborhoods()])
-      .then(([res, nbh]) => {
-        if (cancelled) return
-        applyResponse(res)
-        setNeighborhoods(nbh)
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return
-        setError(err instanceof Error ? err.message : String(err))
-      })
+    pollOnce()
 
     if (USE_FIXTURES) {
-      // Fixture mode: one-shot load, no polling — frozen state for visual iteration.
       return () => {
         cancelled = true
+        controller.abort()
       }
     }
 
-    const id = setInterval(() => {
-      fetchCurrent()
-        .then((res) => {
-          if (cancelled) return
-          applyResponse(res)
-        })
-        .catch(() => {
-          // transient poll failures are ignored; next tick will retry
-        })
-    }, POLL_INTERVAL_MS)
-
+    const id = setInterval(pollOnce, POLL_INTERVAL_MS)
     return () => {
       cancelled = true
+      controller.abort()
       clearInterval(id)
     }
-  }, [])
+  }, [comparisonMode])
 
   return {
     stations,
@@ -139,5 +230,6 @@ export function useStationActivity(): HookResult {
     neighborhoodActivity,
     maxNeighborhoodScore,
     lastSnapshotAt,
+    noBaselineData,
   }
 }

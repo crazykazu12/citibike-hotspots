@@ -17,7 +17,7 @@ import { Protocol } from 'pmtiles'
 import { layers as protomapsLayers } from '@protomaps/basemaps'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import type { Feature, FeatureCollection, MultiPolygon, Point, Polygon } from 'geojson'
-import type { Station } from './types'
+import type { ComparisonMode, Station } from './types'
 import type { StationActivity } from './activity'
 import { computeConnectionPoints, type HeatPoint } from './connections'
 import type { Theme } from './themes'
@@ -82,6 +82,19 @@ const ALL_ZONES_OPACITY: DataDrivenPropertyValueSpecification<number> = [
   0,
 ]
 
+// Comparison mode: simple zoom-fade. The fill-color expression carries alpha
+// (transparent at 0% delta and for null-baseline neighborhoods), so opacity
+// here is purely zoom-driven and doesn't read any feature properties.
+const COMPARISON_OPACITY: DataDrivenPropertyValueSpecification<number> = [
+  'interpolate',
+  ['linear'],
+  ['zoom'],
+  NEIGHBORHOOD_ZOOM_MAX,
+  1,
+  STATION_ZOOM_MIN,
+  0,
+]
+
 const HOT_ONLY_OPACITY: DataDrivenPropertyValueSpecification<number> = [
   'interpolate',
   ['linear'],
@@ -107,6 +120,11 @@ const HOT_ONLY_OPACITY: DataDrivenPropertyValueSpecification<number> = [
 
 interface NeighborhoodFillProps extends NeighborhoodProps {
   normalizedScore: number
+  // Present only in yesterday mode. deltaPercent is unclamped (paint clamps
+  // via interpolate boundaries); hasBaseline drives the case branch for the
+  // "no data → transparent" path.
+  deltaPercent?: number
+  hasBaseline?: boolean
 }
 
 interface MapProps {
@@ -116,6 +134,7 @@ interface MapProps {
   neighborhoodActivity: Map<string, NeighborhoodActivity>
   maxNeighborhoodScore: number
   viewMode: ViewMode
+  comparisonMode: ComparisonMode
   theme: Theme
 }
 
@@ -123,6 +142,10 @@ interface HoverState {
   x: number
   y: number
   name: string
+  // undefined → 'now' mode (no comparison context).
+  // null      → 'yesterday' mode, neighborhood had no baseline data.
+  // number    → 'yesterday' mode, unclamped delta percent.
+  deltaPercent?: number | null
 }
 
 type Bounds = [number, number, number, number]
@@ -131,16 +154,26 @@ function buildNeighborhoodsGeoJson(
   data: NeighborhoodFeatureCollection,
   activity: Map<string, NeighborhoodActivity>,
   maxScore: number,
+  comparisonMode: ComparisonMode,
 ): FeatureCollection<Feature['geometry'], NeighborhoodFillProps> {
   return {
     type: 'FeatureCollection',
     features: data.features.map((f) => {
       const a = activity.get(f.properties.nta2020)
       const normalizedScore = maxScore > 0 ? (a?.totalScore ?? 0) / maxScore : 0
-      return {
-        ...f,
-        properties: { ...f.properties, normalizedScore },
+      const properties: NeighborhoodFillProps = {
+        ...f.properties,
+        normalizedScore,
       }
+      if (comparisonMode === 'yesterday') {
+        const dp = a?.deltaPercent
+        properties.hasBaseline = dp !== null && dp !== undefined
+        // Pass the raw value through — the interpolate paint expression
+        // naturally clamps at its boundary stops, and the hover tooltip
+        // shows the unclamped value for accuracy.
+        properties.deltaPercent = dp ?? 0
+      }
+      return { ...f, properties }
     }),
   } as FeatureCollection<Feature['geometry'], NeighborhoodFillProps>
 }
@@ -207,10 +240,13 @@ export function Map({
   neighborhoodActivity,
   maxNeighborhoodScore,
   viewMode,
+  comparisonMode,
   theme,
 }: MapProps) {
+  const comparisonActive = comparisonMode === 'yesterday'
+
   const baseStyle = useMemo(() => buildBaseStyle(theme), [theme])
-  const fillColorExpr = useMemo<DataDrivenPropertyValueSpecification<string>>(
+  const sequentialFillColorExpr = useMemo<DataDrivenPropertyValueSpecification<string>>(
     () => [
       'interpolate',
       ['linear'],
@@ -219,6 +255,30 @@ export function Map({
     ],
     [theme],
   )
+  const comparisonFillColorExpr = useMemo<DataDrivenPropertyValueSpecification<string>>(
+    () => [
+      'case',
+      ['!', ['coalesce', ['get', 'hasBaseline'], false]],
+      'rgba(0,0,0,0)',
+      [
+        'interpolate',
+        ['linear'],
+        ['coalesce', ['get', 'deltaPercent'], 0],
+        ...theme.overlays.comparisonColorScale.flat(),
+      ],
+    ],
+    [theme],
+  )
+  const fillColorExpr = comparisonActive ? comparisonFillColorExpr : sequentialFillColorExpr
+  // In comparison mode, fill-color carries the alpha (transparent at 0 delta
+  // and for null baselines), so the opacity expression just needs to fade
+  // with zoom — no data dependency.
+  const fillOpacityExpr: DataDrivenPropertyValueSpecification<number> = comparisonActive
+    ? COMPARISON_OPACITY
+    : viewMode === 'hot'
+      ? HOT_ONLY_OPACITY
+      : ALL_ZONES_OPACITY
+
   const heatmapColorExpr = useMemo<ExpressionSpecification>(
     () =>
       [
@@ -237,12 +297,20 @@ export function Map({
   const neighborhoodsGeoJson = useMemo(
     () =>
       neighborhoods
-        ? buildNeighborhoodsGeoJson(neighborhoods, neighborhoodActivity, maxNeighborhoodScore)
+        ? buildNeighborhoodsGeoJson(
+            neighborhoods,
+            neighborhoodActivity,
+            maxNeighborhoodScore,
+            comparisonMode,
+          )
         : null,
-    [neighborhoods, neighborhoodActivity, maxNeighborhoodScore],
+    [neighborhoods, neighborhoodActivity, maxNeighborhoodScore, comparisonMode],
   )
 
   const connectionPoints = useMemo(() => {
+    // Heatmap + cluster fills are hidden in comparison mode — short-circuit
+    // the expensive cluster detection (BFS over ~2000 stations) to nothing.
+    if (comparisonActive) return []
     const result = computeConnectionPoints(stations, activity)
     if (import.meta.env.DEV) {
       const { pairCount, groupCount } = result.stats
@@ -253,7 +321,7 @@ export function Map({
       )
     }
     return [...result.corridorPoints, ...result.clusterFillPoints]
-  }, [stations, activity])
+  }, [stations, activity, comparisonActive])
 
   const stationsGeoJson = useMemo(
     () => buildHeatGeoJson(stations, activity, connectionPoints, bounds),
@@ -276,8 +344,12 @@ export function Map({
     }
     const f = e.features?.[0]
     if (f) {
-      const props = f.properties as NeighborhoodProps
-      setHover({ x: e.point.x, y: e.point.y, name: props.ntaname })
+      const props = f.properties as NeighborhoodFillProps
+      const next: HoverState = { x: e.point.x, y: e.point.y, name: props.ntaname }
+      if (comparisonActive) {
+        next.deltaPercent = props.hasBaseline ? (props.deltaPercent ?? 0) : null
+      }
+      setHover(next)
     } else if (hover) {
       setHover(null)
     }
@@ -308,8 +380,12 @@ export function Map({
     setHover(null)
   }
 
-  const legendText =
-    zoom < (NEIGHBORHOOD_ZOOM_MAX + STATION_ZOOM_MIN) / 2
+  const lowZoom = zoom < (NEIGHBORHOOD_ZOOM_MAX + STATION_ZOOM_MIN) / 2
+  const legendText = comparisonActive
+    ? lowZoom
+      ? 'Change vs. yesterday at this time. Red = busier, blue = quieter, transparent = no data or unchanged.'
+      : 'Comparison mode shows neighborhood-level change only. Zoom out for the citywide view.'
+    : lowZoom
       ? viewMode === 'hot'
         ? 'Showing only the busiest neighborhoods citywide. Click one to zoom in.'
         : 'Colored neighborhoods = busiest areas city-wide. Click one to zoom in.'
@@ -344,11 +420,12 @@ export function Map({
               type="fill"
               paint={{
                 'fill-color': fillColorExpr,
-                'fill-opacity': viewMode === 'hot' ? HOT_ONLY_OPACITY : ALL_ZONES_OPACITY,
+                'fill-opacity': fillOpacityExpr,
               }}
             />
           </Source>
         )}
+        {!comparisonActive && (
         <Source id="stations" type="geojson" data={stationsGeoJson}>
           <Layer
             id="stations-heat"
@@ -386,6 +463,7 @@ export function Map({
             }}
           />
         </Source>
+        )}
         {neighborhoodsGeoJson && (
           <Layer
             id="neighborhoods-outline"
@@ -397,10 +475,18 @@ export function Map({
       </MaplibreMap>
       {hover && (
         <div className="nbh-tooltip" style={{ left: hover.x, top: hover.y }}>
-          {hover.name}
+          {formatHover(hover)}
         </div>
       )}
       <div className="legend">{legendText}</div>
     </>
   )
+}
+
+function formatHover(h: HoverState): string {
+  if (h.deltaPercent === undefined) return h.name
+  if (h.deltaPercent === null) return `${h.name} · no data`
+  const rounded = Math.round(h.deltaPercent)
+  const sign = rounded > 0 ? '+' : ''
+  return `${h.name} · ${sign}${rounded}%`
 }

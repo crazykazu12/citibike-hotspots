@@ -64,18 +64,21 @@ export interface ComparisonResponse {
   stations: ComparisonStation[]
 }
 
-export async function fetchCurrent(): Promise<CurrentResponse> {
+export async function fetchCurrent(signal?: AbortSignal): Promise<CurrentResponse> {
   if (USE_FIXTURES) {
     const data = await import('./fixtures/current.json')
     return data.default as CurrentResponse
   }
-  const res = await fetch(`${API_BASE}/current`)
+  const res = await fetch(`${API_BASE}/current`, { signal })
   if (!res.ok) throw new Error(`/current failed: ${res.status} ${res.statusText}`)
   return (await res.json()) as CurrentResponse
 }
 
-export async function fetchComparison(baseline: ComparisonBaseline): Promise<ComparisonResponse> {
-  const res = await fetch(`${API_BASE}/comparison?baseline=${baseline}`)
+export async function fetchComparison(
+  baseline: ComparisonBaseline,
+  signal?: AbortSignal,
+): Promise<ComparisonResponse> {
+  const res = await fetch(`${API_BASE}/comparison?baseline=${baseline}`, { signal })
   if (!res.ok) throw new Error(`/comparison failed: ${res.status} ${res.statusText}`)
   return (await res.json()) as ComparisonResponse
 }

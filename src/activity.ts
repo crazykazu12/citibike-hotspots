@@ -9,6 +9,10 @@ export type StatusSnapshot = Map<string, number>
 
 export interface StationActivity {
   score: number
+  // Set only in comparison mode. False means the station had no baseline data;
+  // its score is forced to 0 so it falls below the connection-fill threshold
+  // and naturally drops out of clusters/heatmap rendering.
+  hasBaseline?: boolean
 }
 
 // Score = total churn × destination multiplier across the rolling window.

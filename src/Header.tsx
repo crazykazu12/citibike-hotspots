@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { USE_FIXTURES } from './api'
 import type { ViewMode } from './Map'
 import type { ThemeId } from './themes'
+import type { ComparisonMode } from './types'
 
 const TICK_INTERVAL_MS = 5000
 
@@ -11,6 +12,8 @@ interface HeaderProps {
   onViewModeChange: (mode: ViewMode) => void
   themeId: ThemeId
   onThemeChange: (id: ThemeId) => void
+  comparisonMode: ComparisonMode
+  onComparisonChange: (mode: ComparisonMode) => void
 }
 
 function formatRelative(deltaMs: number): string {
@@ -29,7 +32,10 @@ export function Header({
   onViewModeChange,
   themeId,
   onThemeChange,
+  comparisonMode,
+  onComparisonChange,
 }: HeaderProps) {
+  const comparisonActive = comparisonMode === 'yesterday'
   const [, forceTick] = useState(0)
 
   useEffect(() => {
@@ -71,6 +77,28 @@ export function Header({
             Dark
           </button>
         </div>
+        {!USE_FIXTURES && (
+          <div className="view-toggle" role="tablist" aria-label="Compare to">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={comparisonMode === 'none'}
+              className={comparisonMode === 'none' ? 'active' : ''}
+              onClick={() => onComparisonChange('none')}
+            >
+              Now
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={comparisonMode === 'yesterday'}
+              className={comparisonMode === 'yesterday' ? 'active' : ''}
+              onClick={() => onComparisonChange('yesterday')}
+            >
+              Yesterday
+            </button>
+          </div>
+        )}
         <div className="view-toggle" role="tablist" aria-label="View mode">
           <button
             type="button"
@@ -78,6 +106,8 @@ export function Header({
             aria-selected={viewMode === 'all'}
             className={viewMode === 'all' ? 'active' : ''}
             onClick={() => onViewModeChange('all')}
+            disabled={comparisonActive}
+            title={comparisonActive ? 'Not available in comparison mode' : undefined}
           >
             All zones
           </button>
@@ -87,6 +117,8 @@ export function Header({
             aria-selected={viewMode === 'hot'}
             className={viewMode === 'hot' ? 'active' : ''}
             onClick={() => onViewModeChange('hot')}
+            disabled={comparisonActive}
+            title={comparisonActive ? 'Not available in comparison mode' : undefined}
           >
             Hot only
           </button>
