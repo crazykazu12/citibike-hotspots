@@ -18,9 +18,11 @@ Single repo, two top-level apps with separate `package.json` files and dependenc
 - **Frontend** — `/src` — React + Vite + TypeScript + MapLibre GL JS + Protomaps vector tiles + `react-map-gl`. Entry: `index.html` → `src/main.tsx` → `src/App.tsx`.
 - **Backend** — `/backend` — Cloudflare Workers + D1 database. Entry: `backend/src/index.ts`.
 
-**Deployment:**
-- Frontend: deployed to Vercel (URL set after first deploy).
-- Backend: deployed to Cloudflare at `where-in-the-citi-backend.kazumasa-umemoto.workers.dev`.
+**Deployment** (both apps on the same Cloudflare account):
+- Frontend: Cloudflare Pages at `https://where-in-the-citi.pages.dev`. Project name `where-in-the-citi`. **Manual deploy** — see the Gotcha below; pushes to `main` do NOT auto-deploy the frontend.
+- Backend: Cloudflare Workers at `where-in-the-citi-backend.kazumasa-umemoto.workers.dev`. Deployed via `cd backend && npx wrangler deploy`; also manual, not auto-on-push.
+
+Build artifact `dist/` is gitignored (`.gitignore` line `dist`) — Cloudflare Pages builds nothing on its own with the current setup, so `npm run build` must happen locally before `wrangler pages deploy dist`.
 
 **Data flow (post-Session 3):** the frontend fetches from the backend's `/current` endpoint every 30s and renders the pre-computed activity. It no longer calls GBFS directly. The activity formula in `src/activity.ts` is fixture-mode-only and tree-shakes out of production builds.
 
@@ -202,6 +204,19 @@ Use the `mapStyle` prop on `<Map>` to swap themes — react-map-gl calls `setSty
 
 ~2,300 rows per poll. Always use `db.batch()` with prepared statements — individual inserts would be ~2,300 round-trips and would fail. Use `INSERT OR IGNORE` (raw snapshots) or `INSERT OR REPLACE` (bucket aggregates) for idempotency.
 
+### Frontend deploy is manual — `git push` is NOT enough
+
+There is no CI hook between this repo and Cloudflare Pages. Pushing to `main` updates GitHub but does NOT publish the frontend. To ship a frontend change:
+
+```bash
+npm run build                                                    # locally produce dist/
+npx wrangler pages deploy dist --project-name=where-in-the-citi  # upload to Pages
+```
+
+The Pages project lives on the same Cloudflare account as the Worker (`where-in-the-citi`, production branch `main`, no Git integration configured). If you skip the build step, you'll redeploy whatever stale assets are in `dist/`. The 2026-05-22 audit caught the same class of bug for the backend (uncommitted-and-undeployed for 10 days) — the frontend deploy story is the same shape: deploy is an explicit step, never assumed.
+
+Future option: connect Cloudflare Pages → GitHub for auto-deploy on push, or add a GitHub Action calling `wrangler pages deploy`.
+
 ## Backend Operations Reference
 
 ```bash
@@ -239,14 +254,14 @@ npm run setup:stations
 9. Convex hull cluster fills with radial gradient
 10. **Backend Session 1:** Cloudflare Workers + D1 scaffolding, GBFS polling cron
 11. **Backend Session 2:** Wrangler 4 upgrade, 15-min activity aggregation, station→neighborhood mapping
-12. **Backend Session 3:** Read API (`/current`, `/comparison`) + frontend integration + Vercel deploy
+12. **Backend Session 3:** Read API (`/current`, `/comparison`) + frontend integration. (The commit subject mentioned "Vercel deploy" but no Vercel deploy ever happened — frontend was first shipped to Cloudflare Pages on 2026-05-22.)
 13. **Backend Session 4:** Comparison-mode UI (today vs yesterday)
 14. **Backend Session 5:** Sparse-insert poll handler + seed-row aggregation query (shipped 2026-05-22)
 
 ## What's Next
 
 - **Data collection is active** (1-min sparse polling). `backend/wrangler.toml` `[triggers].crons = ["* * * * *", "*/15 * * * *", "0 3 * * *"]`. The 2026-05-12 "pause" documented in `PROJECT_JOURNAL.md` was never actually deployed (working-tree-only); see the 2026-05-22 correction entry for the full timeline.
-- **Backend Session 3:** *(done)* Read API + frontend integration + deploy to Vercel.
+- **Backend Session 3:** *(done)* Read API + frontend integration. (Frontend deployed to Cloudflare Pages 2026-05-22, not Vercel as the original commit subject suggested.)
 - **Backend Session 4:** *(done)* Comparison-mode UI (today vs yesterday).
 - **Backend Session 5:** *(done, deployed 2026-05-22)* Sparse-insert poll handler + seed-row aggregation query. Sparse-insert verified live (~50-500 rows/poll vs ~2,300 dense). Seed-row aggregation structurally working; first post-deploy bucket activity is transiently inflated until ~03:00 UTC cleanup removes stale 2026-05-12 seed rows.
 - **Future:** Deeper time comparisons (`lastweek`), mobile responsive layout, custom themes beyond light/dark.
