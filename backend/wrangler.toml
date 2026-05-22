@@ -4,6 +4,8 @@ compatibility_date = "2026-05-01"
 
 # Polls GBFS every minute; aggregates 15-min buckets at every :00/:15/:30/:45;
 # daily cleanup at 03:00 UTC (raw_snapshots >24h, *_buckets >7d).
+# Sparse-insert (only-changed filter) keeps the per-poll write count ~50-400
+# instead of ~2,300, so 1-min polling stays within the 50M/month allowance.
 [triggers]
 crons = ["* * * * *", "*/15 * * * *", "0 3 * * *"]
 

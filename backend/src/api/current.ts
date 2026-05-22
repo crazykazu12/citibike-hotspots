@@ -5,7 +5,11 @@
 // At minute 0 of a new bucket the result equals the completed score; as the
 // partial fills it converges toward the partial's per-second rate.
 
-import { computeStationBuckets, type StationBucketRow } from '../aggregation'
+import {
+  computeStationBuckets,
+  fetchSourceRowsWithSeed,
+  type StationBucketRow,
+} from '../aggregation'
 
 const BUCKET_SECONDS = 900
 
@@ -44,18 +48,13 @@ export interface CurrentResponse {
   neighborhoods: CurrentNeighborhood[]
 }
 
-interface RawSnapshotRow {
-  station_id: string
-  captured_at: number
-  bikes_available: number
-}
-
 export async function getCurrent(db: D1Database): Promise<CurrentResponse> {
   const computedAt = Math.floor(Date.now() / 1000)
   const partialBucketStart = Math.floor(computedAt / BUCKET_SECONDS) * BUCKET_SECONDS
+  const partialBucketEnd = partialBucketStart + BUCKET_SECONDS
   const partialSeconds = Math.max(1, computedAt - partialBucketStart)
 
-  const [latestBucket, completedRowsRes, partialRowsRes, infoRes] = await Promise.all([
+  const [latestBucket, completedRowsRes, partialRows, infoRes] = await Promise.all([
     db.prepare('SELECT MAX(bucket_start) AS bucket_start FROM station_buckets').first<{
       bucket_start: number | null
     }>(),
@@ -64,12 +63,11 @@ export async function getCurrent(db: D1Database): Promise<CurrentResponse> {
         'SELECT station_id, activity_score, bikes_in, bikes_out FROM station_buckets WHERE bucket_start = (SELECT MAX(bucket_start) FROM station_buckets)',
       )
       .all<StationBucketRow>(),
-    db
-      .prepare(
-        'SELECT station_id, captured_at, bikes_available FROM raw_snapshots WHERE captured_at >= ? ORDER BY station_id, captured_at',
-      )
-      .bind(partialBucketStart)
-      .all<RawSnapshotRow>(),
+    // Same seed-row contract as the aggregation cron — needed because we
+    // write only changed rows; a station that changed exactly once during
+    // the partial bucket has one row and needs a pre-bucket seed to
+    // produce a delta.
+    fetchSourceRowsWithSeed(db, partialBucketStart, partialBucketEnd),
     db
       .prepare(
         'SELECT si.station_id, si.name, si.lat, si.lon, si.capacity, sn.neighborhood_id FROM station_info si LEFT JOIN stations_neighborhoods sn ON sn.station_id = si.station_id',
@@ -79,7 +77,6 @@ export async function getCurrent(db: D1Database): Promise<CurrentResponse> {
 
   const completedBucketStart = latestBucket?.bucket_start ?? partialBucketStart - BUCKET_SECONDS
   const completedRows = completedRowsRes.results ?? []
-  const partialRows = partialRowsRes.results ?? []
   const infoRows = infoRes.results ?? []
 
   const completedById = new Map<string, StationBucketRow>()

@@ -13,10 +13,54 @@ const DEST_MULT_POSITIVE = 1.0
 const DEST_MULT_ZERO = 0.3
 const DEST_MULT_NEGATIVE = 0.1
 
-interface SnapshotRow {
+export interface SnapshotRow {
   station_id: string
   captured_at: number
   bikes_available: number
+}
+
+// Source rows for a bucket = (in-bucket rows) + (one "seed" row per station
+// from before the bucket started). The seed is required because we now write
+// only changed rows: a station that changed exactly once during the bucket
+// has one in-bucket row, and the delta-iteration needs a prior value to
+// compare against. Without a seed, the single in-bucket row registers no
+// activity and we silently undercount.
+//
+// Used by both runAggregation() and the partial-bucket compute in
+// src/api/current.ts so the same correctness invariant applies everywhere.
+//
+// Edge case: if cleanup has pruned a station's only prior row (>24h ago
+// for very inactive stations), no seed row exists → that station needs at
+// least two in-bucket changes to register activity. Documented tradeoff.
+const SOURCE_ROWS_WITH_SEED_SQL = `
+SELECT station_id, captured_at, bikes_available
+FROM raw_snapshots
+WHERE captured_at >= ?1 AND captured_at < ?2
+
+UNION ALL
+
+SELECT rs.station_id, rs.captured_at, rs.bikes_available
+FROM raw_snapshots rs
+INNER JOIN (
+  SELECT station_id, MAX(captured_at) AS captured_at
+  FROM raw_snapshots
+  WHERE captured_at < ?1
+  GROUP BY station_id
+) seed ON rs.station_id = seed.station_id AND rs.captured_at = seed.captured_at
+
+ORDER BY station_id, captured_at
+`
+
+export async function fetchSourceRowsWithSeed(
+  db: D1Database,
+  bucketStart: number,
+  bucketEnd: number,
+): Promise<SnapshotRow[]> {
+  const res = await db
+    .prepare(SOURCE_ROWS_WITH_SEED_SQL)
+    .bind(bucketStart, bucketEnd)
+    .all<SnapshotRow>()
+  return res.results ?? []
 }
 
 export interface StationBucketRow {
@@ -109,14 +153,7 @@ export async function runAggregation(db: D1Database, nowSeconds: number): Promis
   const bucketStart = bucketStartFor(nowSeconds)
   const bucketEnd = bucketStart + BUCKET_SECONDS
 
-  const sourceRes = await db
-    .prepare(
-      'SELECT station_id, captured_at, bikes_available FROM raw_snapshots WHERE captured_at >= ? AND captured_at < ? ORDER BY station_id, captured_at',
-    )
-    .bind(bucketStart, bucketEnd)
-    .all<SnapshotRow>()
-
-  const sourceRows = sourceRes.results ?? []
+  const sourceRows = await fetchSourceRowsWithSeed(db, bucketStart, bucketEnd)
   if (sourceRows.length === 0) {
     console.warn(`aggregation skipped: empty bucket bucket_start=${bucketStart}`)
     return
