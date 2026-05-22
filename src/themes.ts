@@ -10,14 +10,13 @@ export interface ThemeOverlays {
   heatmapColorStops: Array<[number, string]>
   // Color of the thin neighborhood polygon outlines.
   neighborhoodOutline: string
-  // Three-stop diverging scale for comparison-mode polygon fills, keyed on
-  // signed deltaPercent. Order: [-CAP, cold color], [0, transparent], [CAP, hot color].
-  // The MapLibre interpolate naturally clamps inputs beyond the boundary stops.
-  comparisonColorScale: [
-    [number, string],
-    [number, string],
-    [number, string],
-  ]
+  // Diverging scale colors for comparison mode. Theme owns colors only — the
+  // saturation cap (where these colors are reached) lives per-baseline in
+  // COMPARISON_CAPS in Map.tsx, since it's a baseline concern, not a theme
+  // concern. The 0.55 alpha on the endpoints matches Now-mode's
+  // ALL_ZONES_OPACITY=0.55 so comparison peaks render at the same softness as
+  // Now-mode peaks rather than fully opaque.
+  comparisonColors: { cold: string; mid: string; hot: string }
 }
 
 export interface ThemeUi {
@@ -67,11 +66,11 @@ export const THEMES: Record<ThemeId, Theme> = {
         [1, 'rgba(178, 24, 43, 0.7)'],
       ],
       neighborhoodOutline: '#888',
-      comparisonColorScale: [
-        [-200, '#1e40af'],
-        [0, 'rgba(0,0,0,0)'],
-        [200, '#dc2626'],
-      ],
+      comparisonColors: {
+        cold: 'rgba(30, 64, 175, 0.55)', // #1e40af @ 55%
+        mid: 'rgba(0, 0, 0, 0)',
+        hot: 'rgba(220, 38, 38, 0.55)', // #dc2626 @ 55%
+      },
     },
     ui: {
       headerBg: 'rgba(255, 255, 255, 0.85)',
@@ -110,11 +109,11 @@ export const THEMES: Record<ThemeId, Theme> = {
         [1, 'rgba(239, 68, 68, 0.9)'],
       ],
       neighborhoodOutline: 'rgba(255, 255, 255, 0.5)',
-      comparisonColorScale: [
-        [-200, '#1e40af'],
-        [0, 'rgba(0,0,0,0)'],
-        [200, '#dc2626'],
-      ],
+      comparisonColors: {
+        cold: 'rgba(30, 64, 175, 0.55)', // #1e40af @ 55%
+        mid: 'rgba(0, 0, 0, 0)',
+        hot: 'rgba(220, 38, 38, 0.55)', // #dc2626 @ 55%
+      },
     },
     ui: {
       headerBg: 'rgba(20, 22, 28, 0.85)',

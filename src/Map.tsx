@@ -34,6 +34,23 @@ export type ViewMode = 'all' | 'hot'
 // project). Built from build.protomaps.com/20260522.pmtiles with bbox covering
 // the 5 boroughs + JC/Hoboken (-74.30,40.45,-73.65,40.95) and maxzoom=15.
 // Regenerate via the steps in CLAUDE.md ("Regenerating the NYC tile extract").
+// Per-baseline saturation cap for the comparison diverging color scale. Values
+// beyond ±cap clamp to the boundary color via MapLibre's interpolate; the hover
+// tooltip continues to show the unclamped raw deltaPercent. Peak color alpha
+// lives in theme.overlays.comparisonColors (set to 0.55 so peaks render at the
+// same softness as Now-mode's ALL_ZONES_OPACITY=0.55 rather than fully opaque).
+//
+//   1hour:    tuned 2026-05-22 against 110 live samples — IQR was [-31%, +44%],
+//             p90 ≈ +148%; cap=100 makes typical movement clearly colored while
+//             leaving ~19% of neighborhoods to saturate as outliers.
+//   yesterday: PROVISIONAL — tune once 24h of data exists (~2026-05-23 18:00 UTC).
+//   lastweek:  PROVISIONAL — tune once 7d of data exists (~2026-05-29 18:00 UTC).
+const COMPARISON_CAPS: Record<Exclude<ComparisonMode, 'none'>, number> = {
+  '1hour': 100,
+  yesterday: 75,
+  lastweek: 100,
+}
+
 const PMTILES_URL = 'https://pub-1e4794524da64a1aa8c1dc2c9e85cc47.r2.dev/nyc.pmtiles'
 const NEIGHBORHOOD_ZOOM_MAX = 13
 const STATION_ZOOM_MIN = 14.5
@@ -271,18 +288,29 @@ export function Map({
     [theme],
   )
   const comparisonFillColorExpr = useMemo<DataDrivenPropertyValueSpecification<string>>(
-    () => [
-      'case',
-      ['!', ['coalesce', ['get', 'hasBaseline'], false]],
-      'rgba(0,0,0,0)',
-      [
-        'interpolate',
-        ['linear'],
-        ['coalesce', ['get', 'deltaPercent'], 0],
-        ...theme.overlays.comparisonColorScale.flat(),
-      ],
-    ],
-    [theme],
+    () => {
+      // 'none' fallback is unreachable in practice (this expression isn't
+      // selected when comparisonActive is false), but the type narrows.
+      const cap = comparisonMode !== 'none' ? COMPARISON_CAPS[comparisonMode] : 100
+      const { cold, mid, hot } = theme.overlays.comparisonColors
+      return [
+        'case',
+        ['!', ['coalesce', ['get', 'hasBaseline'], false]],
+        'rgba(0,0,0,0)',
+        [
+          'interpolate',
+          ['linear'],
+          ['coalesce', ['get', 'deltaPercent'], 0],
+          -cap,
+          cold,
+          0,
+          mid,
+          cap,
+          hot,
+        ],
+      ]
+    },
+    [theme, comparisonMode],
   )
   const fillColorExpr = comparisonActive ? comparisonFillColorExpr : sequentialFillColorExpr
   // In comparison mode, fill-color carries the alpha (transparent at 0 delta
