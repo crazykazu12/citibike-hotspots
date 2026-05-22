@@ -3,6 +3,7 @@ import {
   Map as MaplibreMap,
   Source,
   Layer,
+  AttributionControl,
   type MapEvent,
   type MapLayerMouseEvent,
   type MapRef,
@@ -415,8 +416,12 @@ export function Map({
         onMouseMove={onMouseMove}
         onMouseLeave={onMouseLeave}
         onClick={onClick}
-        style={{ width: '100vw', height: 'calc(100vh - 56px)', marginTop: 56 }}
+        attributionControl={false}
+        style={{ position: 'absolute', top: 56, left: 0, right: 0, bottom: 0 }}
       >
+        {/* Compact ⓘ control bottom-right. `© OpenStreetMap` in the source's
+            `attribution` field is required for ODbL compliance — do not remove. */}
+        <AttributionControl compact={true} />
         {neighborhoodsGeoJson && (
           <Source id="neighborhoods" type="geojson" data={neighborhoodsGeoJson}>
             <Layer
