@@ -54,6 +54,20 @@ html, body, #root {
   height: 100%;
   margin: 0;
   overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* Pin the document to the viewport so macOS rubber-band overscroll has no
+   region to reveal. `overscroll-behavior: none` above suppresses the bounce
+   itself in modern browsers; this is the belt-and-suspenders for older
+   Safari/Chrome and any future regression. The map is `position: fixed` and
+   anchors to the visual viewport regardless, so this doesn't reposition it. */
+html, body {
+  position: fixed;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
 }
 
 #root {
