@@ -115,8 +115,8 @@ The fixture file is a saved `/current` API response, so fixture mode and live mo
 
 ```
 raw_snapshots          -- live data, retained 24h
-station_buckets        -- 15-min aggregates per station, retained 7d
-neighborhood_buckets   -- 15-min aggregates per neighborhood, retained 7d
+station_buckets        -- 15-min aggregates per station, retained 8d
+neighborhood_buckets   -- 15-min aggregates per neighborhood, retained 8d
 stations_neighborhoods -- station→neighborhood mapping with capacity
 ```
 
@@ -126,7 +126,7 @@ stations_neighborhoods -- station→neighborhood mapping with capacity
 |---|---|
 | `* * * * *` | Polls GBFS, fetches all ~2,300 stations, writes only the ~50-500 with a changed `bikes_available` value (sparse-insert filter in `pollAndWrite`) via `db.batch()` |
 | `*/15 * * * *` | Aggregates the just-completed bucket into `station_buckets` and `neighborhood_buckets` |
-| `0 3 * * *` | Daily cleanup: `raw_snapshots > 24h`, bucket tables `> 7 days` |
+| `0 3 * * *` | Daily cleanup: `raw_snapshots > 24h`, bucket tables `> 8 days` (8d, not 7d, so the `/comparison?baseline=lastweek` 7-day lookback always lands on a bucket the cleanup hasn't pruned yet) |
 
 The poll and aggregate crons co-fire on `:00`/`:15`/`:30`/`:45` minutes — Cloudflare delivers each as a separate `scheduled()` invocation with its own `controller.cron` string. The dispatch is `if / else if / else if`, not `if / else`.
 
@@ -296,7 +296,16 @@ npm run setup:stations
 - **Backend Session 3:** *(done)* Read API + frontend integration. (Frontend deployed to Cloudflare Pages 2026-05-22, not Vercel as the original commit subject suggested.)
 - **Backend Session 4:** *(done)* Comparison-mode UI (today vs yesterday).
 - **Backend Session 5:** *(done, deployed 2026-05-22)* Sparse-insert poll handler + seed-row aggregation query. Sparse-insert verified live (~50-500 rows/poll vs ~2,300 dense). Seed-row aggregation structurally working; first post-deploy bucket activity is transiently inflated until ~03:00 UTC cleanup removes stale 2026-05-12 seed rows.
-- **Future:** Deeper time comparisons (`lastweek`), mobile responsive layout, custom themes beyond light/dark.
+- **Future:** Mobile responsive layout, custom themes beyond light/dark, per-baseline ±-cap tuning for the comparison color scale (the current ±200% cap is shared across `1hour`/`yesterday`/`lastweek` — 1hour deltas will probably cluster tighter and may want a smaller cap once we see real data).
+
+### `/comparison?baseline=…` accepts three values
+
+Offsets from the most recent completed 15-min bucket:
+- `1hour` → 3,600s (lookback 1 hour). Data-availability: immediate once the backend has ≥1 hour of buckets.
+- `yesterday` → 86,400s (lookback 24 hours). Available ~24h after continuous collection started.
+- `lastweek` → 604,800s (lookback 7 days). Available ~7d after continuous collection started; the 8-day bucket retention guarantees the baseline survives daily cleanup.
+
+Unknown baseline values return HTTP 400. Missing baseline data (the lookback bucket doesn't exist yet) returns 200 with `baseline_activity: null` / `delta_percent: null` per-row — the frontend renders a "comparison data not yet available" banner.
 
 ## Project Journal
 

@@ -174,8 +174,11 @@ export function useStationActivity({
     }
 
     function pollOnce(): Promise<void> {
-      if (comparisonMode === 'yesterday') {
-        return fetchComparison('yesterday', controller.signal)
+      // comparisonMode narrows: 'none' falls through to fetchCurrent; the three
+      // comparison values are exactly the ComparisonBaseline union, so the
+      // type fits fetchComparison's signature with no cast.
+      if (comparisonMode !== 'none') {
+        return fetchComparison(comparisonMode, controller.signal)
           .then((res) => apply(reshapeComparison(res)))
           .catch((err: unknown) => {
             if (isAbort(err) || cancelled) return

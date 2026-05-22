@@ -35,7 +35,7 @@ export function Header({
   comparisonMode,
   onComparisonChange,
 }: HeaderProps) {
-  const comparisonActive = comparisonMode === 'yesterday'
+  const comparisonActive = comparisonMode !== 'none'
   const [, forceTick] = useState(0)
 
   useEffect(() => {
@@ -78,26 +78,19 @@ export function Header({
           </button>
         </div>
         {!USE_FIXTURES && (
-          <div className="view-toggle" role="tablist" aria-label="Compare to">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={comparisonMode === 'none'}
-              className={comparisonMode === 'none' ? 'active' : ''}
-              onClick={() => onComparisonChange('none')}
+          <label className="comparison-select">
+            <span className="comparison-select-label">Compare:</span>
+            <select
+              value={comparisonMode}
+              onChange={(e) => onComparisonChange(e.target.value as ComparisonMode)}
+              aria-label="Compare to"
             >
-              Now
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={comparisonMode === 'yesterday'}
-              className={comparisonMode === 'yesterday' ? 'active' : ''}
-              onClick={() => onComparisonChange('yesterday')}
-            >
-              Yesterday
-            </button>
-          </div>
+              <option value="none">Now</option>
+              <option value="1hour">1 hour ago</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="lastweek">1 week ago</option>
+            </select>
+          </label>
         )}
         <div className="view-toggle" role="tablist" aria-label="View mode">
           <button

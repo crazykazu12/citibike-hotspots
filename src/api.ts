@@ -35,7 +35,7 @@ export interface CurrentResponse {
   neighborhoods: CurrentNeighborhood[]
 }
 
-export type ComparisonBaseline = 'yesterday' | 'lastweek'
+export type ComparisonBaseline = '1hour' | 'yesterday' | 'lastweek'
 
 export interface ComparisonNeighborhood {
   neighborhood_id: string

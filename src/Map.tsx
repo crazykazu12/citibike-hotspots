@@ -180,7 +180,7 @@ function buildNeighborhoodsGeoJson(
         ...f.properties,
         normalizedScore,
       }
-      if (comparisonMode === 'yesterday') {
+      if (comparisonMode !== 'none') {
         const dp = a?.deltaPercent
         properties.hasBaseline = dp !== null && dp !== undefined
         // Pass the raw value through — the interpolate paint expression
@@ -258,7 +258,7 @@ export function Map({
   comparisonMode,
   theme,
 }: MapProps) {
-  const comparisonActive = comparisonMode === 'yesterday'
+  const comparisonActive = comparisonMode !== 'none'
 
   const baseStyle = useMemo(() => buildBaseStyle(theme), [theme])
   const sequentialFillColorExpr = useMemo<DataDrivenPropertyValueSpecification<string>>(
@@ -396,9 +396,15 @@ export function Map({
   }
 
   const lowZoom = zoom < (NEIGHBORHOOD_ZOOM_MAX + STATION_ZOOM_MIN) / 2
+  const comparisonBaselineLabel =
+    comparisonMode === '1hour'
+      ? '1 hour ago'
+      : comparisonMode === 'lastweek'
+        ? 'this time last week'
+        : 'yesterday at this time'
   const legendText = comparisonActive
     ? lowZoom
-      ? 'Change vs. yesterday at this time. Red = busier, blue = quieter, transparent = no data or unchanged.'
+      ? `Change vs. ${comparisonBaselineLabel}. Red = busier, blue = quieter, transparent = no data or unchanged.`
       : 'Comparison mode shows neighborhood-level change only. Zoom out for the citywide view.'
     : lowZoom
       ? viewMode === 'hot'

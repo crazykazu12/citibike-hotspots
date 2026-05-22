@@ -6,4 +6,4 @@ export interface Station {
   capacity: number
 }
 
-export type ComparisonMode = 'none' | 'yesterday'
+export type ComparisonMode = 'none' | '1hour' | 'yesterday' | 'lastweek'

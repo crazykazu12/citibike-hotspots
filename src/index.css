@@ -260,6 +260,49 @@ code {
   color: var(--toggle-text, #6b6375);
 }
 
+.comparison-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.2;
+  color: var(--toggle-text, #6b6375);
+  transition: color 200ms ease;
+}
+
+.comparison-select-label {
+  white-space: nowrap;
+}
+
+.comparison-select select {
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.2;
+  padding: 4px 24px 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--toggle-bg, rgba(0, 0, 0, 0.12));
+  background-color: var(--toggle-active-bg, #fff);
+  color: var(--toggle-active-text, #08060d);
+  cursor: pointer;
+  /* Custom chevron — embedded SVG so we don't need an asset round-trip. */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='none' stroke='%236b6375' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' d='M1 1l4 4 4-4'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+}
+
+.comparison-select select:hover {
+  border-color: var(--toggle-text, rgba(0, 0, 0, 0.25));
+}
+
+.comparison-select select:focus-visible {
+  outline: 2px solid var(--accent, #aa3bff);
+  outline-offset: 1px;
+}
+
 .comparison-status-banner {
   position: fixed;
   top: 68px;

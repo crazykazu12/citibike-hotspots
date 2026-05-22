@@ -1,13 +1,22 @@
-// GET /comparison?baseline=yesterday|lastweek
+// GET /comparison?baseline=1hour|yesterday|lastweek
 // Returns the most recent completed 15-min bucket alongside the same bucket
-// shifted back 1 day or 7 days, with deltas. Missing baseline rows surface
-// as null rather than failures so the frontend can render "no comparison data
-// yet" states gracefully.
+// shifted back by the requested offset, with deltas. Missing baseline rows
+// surface as null rather than failures so the frontend can render "no
+// comparison data yet" states gracefully (this is the expected state for
+// 'yesterday' before 24h of polling history accumulates, and for 'lastweek'
+// before 7d).
 
+const HOUR_SECONDS = 3_600
 const DAY_SECONDS = 86_400
 const WEEK_SECONDS = 7 * DAY_SECONDS
 
-export type Baseline = 'yesterday' | 'lastweek'
+export type Baseline = '1hour' | 'yesterday' | 'lastweek'
+
+const BASELINE_OFFSETS: Record<Baseline, number> = {
+  '1hour': HOUR_SECONDS,
+  yesterday: DAY_SECONDS,
+  lastweek: WEEK_SECONDS,
+}
 
 interface NeighborhoodRow {
   neighborhood_id: string
@@ -52,11 +61,11 @@ export interface ComparisonResponse {
 }
 
 function offsetSeconds(baseline: Baseline): number {
-  return baseline === 'lastweek' ? WEEK_SECONDS : DAY_SECONDS
+  return BASELINE_OFFSETS[baseline]
 }
 
 export function parseBaseline(raw: string | null): Baseline | null {
-  if (raw === 'yesterday' || raw === 'lastweek') return raw
+  if (raw === '1hour' || raw === 'yesterday' || raw === 'lastweek') return raw
   return null
 }
 

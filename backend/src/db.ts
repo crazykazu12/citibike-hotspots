@@ -50,7 +50,11 @@ export async function runRetentionCleanup(
   nowSeconds: number,
 ): Promise<CleanupResult> {
   const rawCutoff = nowSeconds - 24 * 3600
-  const bucketCutoff = nowSeconds - 7 * 24 * 3600
+  // 8 days, not 7. The `/comparison?baseline=lastweek` lookback is exactly
+  // 7 days; with 7-day retention the daily cleanup could prune the baseline
+  // bucket on the same day a request for it arrives. 8-day retention is the
+  // minimum margin to keep that bucket alive through the lookback window.
+  const bucketCutoff = nowSeconds - 8 * 24 * 3600
 
   const [raw, sb, nb] = await db.batch([
     db.prepare('DELETE FROM raw_snapshots WHERE captured_at < ?').bind(rawCutoff),

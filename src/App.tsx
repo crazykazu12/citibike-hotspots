@@ -36,17 +36,17 @@ function App() {
     }
   }, [themeId, theme])
 
-  // Hot Only is meaningless in comparison mode — force All Zones on entry.
-  // On exit (yesterday → now) we don't restore the prior state; user can
+  // Hot Only is meaningless in any comparison mode — force All Zones on entry.
+  // On exit (comparison → now) we don't restore the prior state; user can
   // re-pick Hot Only if they want it.
   useEffect(() => {
-    if (comparisonMode === 'yesterday') setViewMode('all')
+    if (comparisonMode !== 'none') setViewMode('all')
   }, [comparisonMode])
 
   if (error) return <p>Error loading activity data: {error}</p>
   if (!stations) return <p>Loading…</p>
 
-  const showNoBaselineBanner = comparisonMode === 'yesterday' && noBaselineData
+  const showNoBaselineBanner = comparisonMode !== 'none' && noBaselineData
 
   return (
     <>
@@ -71,7 +71,7 @@ function App() {
       />
       {showNoBaselineBanner && (
         <div className="comparison-status-banner">
-          Yesterday's data not yet available — comes online after 24h of polling.
+          Comparison data not yet available — comes online once enough polling history has accumulated.
         </div>
       )}
     </>
