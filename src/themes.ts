@@ -67,7 +67,10 @@ export const THEMES: Record<ThemeId, Theme> = {
       ],
       neighborhoodOutline: '#888',
       comparisonColors: {
-        cold: 'rgba(30, 64, 175, 0.55)', // #1e40af @ 55%
+        // Matches this theme's neighborhoodColorScale low-end (#3b82f6) so
+        // "quieter" in comparison reads as the same hue as "low activity"
+        // in Now mode within the light theme.
+        cold: 'rgba(59, 130, 246, 0.55)', // #3b82f6 @ 55%
         mid: 'rgba(0, 0, 0, 0)',
         hot: 'rgba(220, 38, 38, 0.55)', // #dc2626 @ 55%
       },
@@ -110,7 +113,10 @@ export const THEMES: Record<ThemeId, Theme> = {
       ],
       neighborhoodOutline: 'rgba(255, 255, 255, 0.5)',
       comparisonColors: {
-        cold: 'rgba(30, 64, 175, 0.55)', // #1e40af @ 55%
+        // Matches this theme's neighborhoodColorScale low-end (#22d3ee) so
+        // "quieter" in comparison reads as the same hue as "low activity"
+        // in Now mode within the dark theme.
+        cold: 'rgba(34, 211, 238, 0.55)', // #22d3ee @ 55%
         mid: 'rgba(0, 0, 0, 0)',
         hot: 'rgba(220, 38, 38, 0.55)', // #dc2626 @ 55%
       },
