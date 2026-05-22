@@ -42,12 +42,22 @@ const HOVER_TOOLTIP_MAX_ZOOM = 15
 const FIT_BOUNDS_PADDING = 40
 const FIT_BOUNDS_DURATION_MS = 1000
 const INITIAL_CENTER: [number, number] = [-73.94, 40.73]
-const INITIAL_ZOOM = 8.25
-const MIN_ZOOM = 8.25
+// Both are floors. MapLibre auto-clamps the effective minimum zoom upward on
+// wider viewports to keep MAX_BOUNDS contained — see _constrainCamera() — so
+// on screens wider than ~817 px the actual minimum will be higher than 10.
+const INITIAL_ZOOM = 10
+const MIN_ZOOM = 10
 const MAX_ZOOM = 18
+// Inset slightly from the R2 tile extract's bbox (-74.30/40.45/-73.65/40.95)
+// so the viewport never reaches an edge where the extract has no tile data.
+// Without this, panning past the bbox reveals MapLibre's empty background as
+// gray. This is the actual fix for the "gray on pan" symptom; the prior
+// page-layout fixes (position:fixed, overflow:hidden, overscroll-behavior,
+// pinned html/body in src/index.css) are correct hardening but were not the
+// cause — see PROJECT_JOURNAL.md 2026-05-22 entries.
 const MAX_BOUNDS: [[number, number], [number, number]] = [
-  [-74.7, 40.2],
-  [-73.2, 41.2],
+  [-74.28, 40.47],
+  [-73.67, 40.93],
 ]
 const INTERACTIVE_LAYER_IDS = ['neighborhoods-fill']
 
