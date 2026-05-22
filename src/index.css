@@ -235,6 +235,10 @@ code {
   margin-top: auto;
   padding-top: 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.12);
+  /* Container stays full-width so the top border reads as a section divider;
+     the indicator text inside is centered to match the centered controls
+     above. */
+  text-align: center;
 }
 
 /* Pull-out tab — small square icon-only button anchored to the panel's
@@ -283,6 +287,12 @@ code {
   border-radius: 999px;
   padding: 2px;
   transition: background-color 200ms ease;
+  /* Inside the drawer's flex column, default `align-items: stretch` would
+     stretch this pill to full width with empty space past the buttons.
+     Hug content and center in the column instead. No-op outside a flex
+     parent. */
+  align-self: center;
+  width: fit-content;
 }
 
 .view-toggle button {
@@ -328,6 +338,9 @@ code {
   line-height: 1.2;
   color: var(--toggle-text, #6b6375);
   transition: color 200ms ease;
+  /* Match .view-toggle — hug content and center in the drawer's column. */
+  align-self: center;
+  width: fit-content;
 }
 
 .comparison-select-label {
