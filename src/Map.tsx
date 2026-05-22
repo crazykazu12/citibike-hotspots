@@ -417,7 +417,7 @@ export function Map({
         onMouseLeave={onMouseLeave}
         onClick={onClick}
         attributionControl={false}
-        style={{ position: 'absolute', top: 56, left: 0, right: 0, bottom: 0 }}
+        style={{ position: 'fixed', top: 56, left: 0, right: 0, bottom: 0 }}
       >
         {/* Compact ⓘ control bottom-right. `© OpenStreetMap` in the source's
             `attribution` field is required for ODbL compliance — do not remove. */}
