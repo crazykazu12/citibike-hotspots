@@ -2,17 +2,16 @@ import { useEffect, useState } from 'react'
 import { Map, type ViewMode } from './Map'
 import { Header } from './Header'
 import { useStationActivity } from './useStationActivity'
-import { THEMES, type ThemeId } from './themes'
+import { THEMES } from './themes'
 import type { ComparisonMode } from './types'
 
-function detectInitialTheme(): ThemeId {
-  if (typeof window === 'undefined' || !window.matchMedia) return 'light'
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-}
+// Theme is hardcoded to dark. The light theme definition remains in
+// src/themes.ts as dead-but-available code so a user-facing toggle (and
+// OS-preference detection) can be reinstated without restoring infrastructure.
+const theme = THEMES.dark
 
 function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('all')
-  const [themeId, setThemeId] = useState<ThemeId>(detectInitialTheme)
   const [comparisonMode, setComparisonMode] = useState<ComparisonMode>('none')
 
   const {
@@ -26,15 +25,15 @@ function App() {
     noBaselineData,
   } = useStationActivity({ comparisonMode })
 
-  const theme = THEMES[themeId]
-
   useEffect(() => {
+    // Module-scope `theme` is a constant — this effect runs once on mount and
+    // pins the dark theme's CSS variables. No re-run needed.
     const root = document.documentElement
-    root.dataset.theme = themeId
+    root.dataset.theme = theme.id
     for (const [k, v] of Object.entries(theme.ui)) {
       root.style.setProperty(`--${k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`, v)
     }
-  }, [themeId, theme])
+  }, [])
 
   // Hot Only is meaningless in any comparison mode — force All Zones on entry.
   // On exit (comparison → now) we don't restore the prior state; user can
@@ -54,8 +53,6 @@ function App() {
         lastSnapshotAt={lastSnapshotAt}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
-        themeId={themeId}
-        onThemeChange={setThemeId}
         comparisonMode={comparisonMode}
         onComparisonChange={setComparisonMode}
       />

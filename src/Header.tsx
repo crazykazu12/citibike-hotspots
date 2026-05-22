@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { USE_FIXTURES } from './api'
 import type { ViewMode } from './Map'
-import type { ThemeId } from './themes'
 import type { ComparisonMode } from './types'
 
 const TICK_INTERVAL_MS = 5000
@@ -10,8 +9,6 @@ interface HeaderProps {
   lastSnapshotAt: number | null
   viewMode: ViewMode
   onViewModeChange: (mode: ViewMode) => void
-  themeId: ThemeId
-  onThemeChange: (id: ThemeId) => void
   comparisonMode: ComparisonMode
   onComparisonChange: (mode: ComparisonMode) => void
 }
@@ -30,8 +27,6 @@ export function Header({
   lastSnapshotAt,
   viewMode,
   onViewModeChange,
-  themeId,
-  onThemeChange,
   comparisonMode,
   onComparisonChange,
 }: HeaderProps) {
@@ -57,26 +52,6 @@ export function Header({
         <p className="app-subtitle">Real-time Citi Bike activity across NYC</p>
       </div>
       <div className="app-header-right">
-        <div className="view-toggle theme-picker" role="tablist" aria-label="Theme">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={themeId === 'light'}
-            className={themeId === 'light' ? 'active' : ''}
-            onClick={() => onThemeChange('light')}
-          >
-            Light
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={themeId === 'dark'}
-            className={themeId === 'dark' ? 'active' : ''}
-            onClick={() => onThemeChange('dark')}
-          >
-            Dark
-          </button>
-        </div>
         {!USE_FIXTURES && (
           <label className="comparison-select">
             <span className="comparison-select-label">Compare:</span>
