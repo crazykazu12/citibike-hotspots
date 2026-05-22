@@ -126,8 +126,6 @@ export function Drawer({
         aria-label={open ? 'Close controls' : 'Open controls'}
       >
         <span className="drawer-tab-icon" aria-hidden="true">≡</span>
-        <span className="drawer-tab-label">Controls</span>
-        <span className="drawer-tab-chevron" aria-hidden="true">▶</span>
       </button>
     </div>
   )

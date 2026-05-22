@@ -237,9 +237,10 @@ code {
   border-top: 1px solid rgba(255, 255, 255, 0.12);
 }
 
-/* Pull-out tab — discoverability-critical. Stays anchored at the panel's
-   right edge so it's the only visible affordance when closed. Toggles both
-   ways (chevron rotates 180° to indicate state). */
+/* Pull-out tab — small square icon-only button anchored to the panel's
+   right edge. The drawer being slid out is itself the open-state cue, so no
+   state-specific styling on the tab; only the tab's position changes (slides
+   with the panel). Toggles both ways. */
 .drawer-tab {
   position: absolute;
   top: 50%;
@@ -247,19 +248,17 @@ code {
   transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  height: 44px;
-  padding: 0 14px;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 22px;
+  border-radius: 6px;
   background: var(--toggle-active-bg, #2e303a);
   color: var(--toggle-active-text, #f9fafb);
   font-family: inherit;
-  font-size: 13px;
-  font-weight: 500;
   cursor: pointer;
   box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.4);
-  white-space: nowrap;
   transition: background-color 200ms ease, box-shadow 200ms ease, translate 200ms ease;
 }
 
@@ -274,17 +273,8 @@ code {
 }
 
 .drawer-tab-icon {
-  font-size: 16px;
+  font-size: 20px;
   line-height: 1;
-}
-
-.drawer-tab-chevron {
-  font-size: 11px;
-  transition: transform 200ms ease;
-}
-
-.drawer.open .drawer-tab-chevron {
-  transform: rotate(180deg);
 }
 
 .view-toggle {
