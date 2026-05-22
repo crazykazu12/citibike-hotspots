@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Map, type ViewMode } from './Map'
 import { Header } from './Header'
+import { Drawer } from './Drawer'
 import { useStationActivity } from './useStationActivity'
 import { THEMES } from './themes'
 import type { ComparisonMode } from './types'
@@ -49,13 +50,7 @@ function App() {
 
   return (
     <>
-      <Header
-        lastSnapshotAt={lastSnapshotAt}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
-        comparisonMode={comparisonMode}
-        onComparisonChange={setComparisonMode}
-      />
+      <Header />
       <Map
         stations={stations}
         activity={activity}
@@ -65,6 +60,13 @@ function App() {
         viewMode={viewMode}
         comparisonMode={comparisonMode}
         theme={theme}
+      />
+      <Drawer
+        lastSnapshotAt={lastSnapshotAt}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        comparisonMode={comparisonMode}
+        onComparisonChange={setComparisonMode}
       />
       {showNoBaselineBanner && (
         <div className="comparison-status-banner">

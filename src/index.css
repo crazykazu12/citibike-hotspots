@@ -182,13 +182,6 @@ code {
   transition: background-color 200ms ease, border-color 200ms ease;
 }
 
-.app-header-left {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  min-width: 0;
-}
-
 .app-title {
   margin: 0;
   font-size: 18px;
@@ -200,22 +193,98 @@ code {
   transition: color 200ms ease;
 }
 
-.app-subtitle {
-  margin: 0;
-  font-size: 13px;
-  color: var(--header-subtext, #6b6375);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.2;
-  transition: color 200ms ease;
+/* Left slide-out drawer.
+   .drawer is a position:fixed container holding the panel (full width of the
+   container) and the tab (absolutely positioned at left: 100% so it protrudes
+   to the right of the panel). Both move together via the container's
+   transform, so the tab stays anchored to the panel's right edge regardless
+   of open/closed state. Container is z-index 1150: above the map, legend,
+   tooltip; below the header (1200). */
+.drawer {
+  position: fixed;
+  top: 56px;
+  left: 0;
+  bottom: 0;
+  width: 280px;
+  z-index: 1150;
+  transform: translateX(-100%);
+  transition: transform 220ms ease-out;
 }
 
-.app-header-right {
+.drawer.open {
+  transform: translateX(0);
+}
+
+.drawer-panel {
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
   display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px 16px;
+  background: rgba(20, 22, 28, 0.92);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--header-text, #f3f4f6);
+  overflow-y: auto;
+}
+
+.drawer-indicator {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+/* Pull-out tab — discoverability-critical. Stays anchored at the panel's
+   right edge so it's the only visible affordance when closed. Toggles both
+   ways (chevron rotates 180° to indicate state). */
+.drawer-tab {
+  position: absolute;
+  top: 50%;
+  left: 100%;
+  transform: translateY(-50%);
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
+  gap: 8px;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 22px;
+  background: var(--toggle-active-bg, #2e303a);
+  color: var(--toggle-active-text, #f9fafb);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 2px 2px 8px rgba(0, 0, 0, 0.4);
+  white-space: nowrap;
+  transition: background-color 200ms ease, box-shadow 200ms ease, translate 200ms ease;
+}
+
+.drawer-tab:hover {
+  translate: 2px 0;
+  box-shadow: 4px 3px 10px rgba(0, 0, 0, 0.45);
+}
+
+.drawer-tab:focus-visible {
+  outline: 2px solid var(--accent, #c084fc);
+  outline-offset: 2px;
+}
+
+.drawer-tab-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.drawer-tab-chevron {
+  font-size: 11px;
+  transition: transform 200ms ease;
+}
+
+.drawer.open .drawer-tab-chevron {
+  transform: rotate(180deg);
 }
 
 .view-toggle {
@@ -338,9 +407,6 @@ code {
 @media (max-width: 560px) {
   .app-header {
     padding: 0 12px;
-  }
-  .app-subtitle {
-    display: none;
   }
 }
 
