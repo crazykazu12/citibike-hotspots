@@ -18,9 +18,10 @@ Single repo, two top-level apps with separate `package.json` files and dependenc
 - **Frontend** — `/src` — React + Vite + TypeScript + MapLibre GL JS + Protomaps vector tiles + `react-map-gl`. Entry: `index.html` → `src/main.tsx` → `src/App.tsx`.
 - **Backend** — `/backend` — Cloudflare Workers + D1 database. Entry: `backend/src/index.ts`.
 
-**Deployment** (both apps on the same Cloudflare account):
+**Deployment** (everything on the same Cloudflare account):
 - Frontend: Cloudflare Pages at `https://where-in-the-citi.pages.dev`. Project name `where-in-the-citi`. **Manual deploy** — see the Gotcha below; pushes to `main` do NOT auto-deploy the frontend.
 - Backend: Cloudflare Workers at `where-in-the-citi-backend.kazumasa-umemoto.workers.dev`. Deployed via `cd backend && npx wrangler deploy`; also manual, not auto-on-push.
+- Basemap tiles: Cloudflare R2 bucket `where-in-the-citi-tiles` (public r2.dev URL), serving an NYC PMTiles extract at `https://pub-1e4794524da64a1aa8c1dc2c9e85cc47.r2.dev/nyc.pmtiles`. The frontend's `PMTILES_URL` constant in `src/Map.tsx` points here. See "Regenerating the NYC tile extract" below.
 
 Build artifact `dist/` is gitignored (`.gitignore` line `dist`) — Cloudflare Pages builds nothing on its own with the current setup, so `npm run build` must happen locally before `wrangler pages deploy dist`.
 
@@ -203,6 +204,37 @@ Use the `mapStyle` prop on `<Map>` to swap themes — react-map-gl calls `setSty
 ### D1 batch inserts
 
 ~2,300 rows per poll. Always use `db.batch()` with prepared statements — individual inserts would be ~2,300 round-trips and would fail. Use `INSERT OR IGNORE` (raw snapshots) or `INSERT OR REPLACE` (bucket aggregates) for idempotency.
+
+### Don't pin the Protomaps demo PMTiles URL
+
+The original `src/Map.tsx` pointed at `https://demo-bucket.protomaps.com/v4.pmtiles` (the public demo bucket). That URL was 404'd by Protomaps without notice between development and the first production deploy (2026-05-22), breaking the basemap on the live site. The fix was to self-host an NYC extract on R2 — same Cloudflare account, no rate limits, no third-party URL stability risk. The lesson is general: any time the code references an "example" / "demo" / "public test" URL, treat it as a borrowed asset and move to a self-hosted version before going public. Decision #8 in `PROJECT_JOURNAL.md` and the 2026-04-26 migration entry both flagged this exact risk — the lesson here is that flagged-but-unfixed pre-launch items must be cleared before the launch, not after.
+
+The fonts glyph URL (`https://protomaps.github.io/basemaps-assets/fonts/{fontstack}/{range}.pbf` in `src/Map.tsx`) is the same shape of borrowed asset — still working at the time of writing, but worth self-hosting alongside the tiles if it ever breaks (it's small, ~5-10 MB of `.pbf` font files; upload the whole `basemaps-assets/fonts/` directory to R2 and swap the URL).
+
+### Regenerating the NYC tile extract
+
+The basemap PMTiles file in R2 freezes OSM data at the build date. Regenerate every 6-12 months (or sooner if streets/landmarks change visibly):
+
+```bash
+# 1. Find the most recent planet build (build.protomaps.com has no directory
+#    index; HEAD-probe today's date and walk back if needed).
+curl -sI https://build.protomaps.com/$(date -u +%Y%m%d).pmtiles | head -1   # → 200 OK
+
+# 2. Extract the NYC bbox (covers 5 boroughs + JC/Hoboken/Weehawken).
+#    maxzoom=15 is the chosen detail level; MapLibre overzooms above 15.
+pmtiles extract https://build.protomaps.com/YYYYMMDD.pmtiles /tmp/nyc.pmtiles \
+  --bbox=-74.30,40.45,-73.65,40.95 --maxzoom=15
+
+# 3. Upload to R2, overwriting the existing object.
+cd backend && npx wrangler r2 object put where-in-the-citi-tiles/nyc.pmtiles \
+  --file=/tmp/nyc.pmtiles --content-type=application/octet-stream --remote
+```
+
+Current extract: ~106 MB, 4,323 tiles, built from `20260522.pmtiles`. No frontend change needed — the URL is stable. R2 CORS rules (allowed origins `https://where-in-the-citi.pages.dev` and `http://localhost:5173`, GET/HEAD with `Range`) are stored on the bucket; re-apply via `npx wrangler r2 bucket cors set where-in-the-citi-tiles --file=<rules.json> --force` if they ever get cleared.
+
+### Attribution is a real licensing requirement
+
+The Protomaps tilesets are a "Produced Work" of OpenStreetMap and inherit OSM's ODbL license. The map MUST visibly credit `© OpenStreetMap` somewhere. The attribution is wired via the `attribution` field on the `protomaps` vector source in `src/Map.tsx` (`<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>`); `react-map-gl`'s `<MaplibreMap>` adds a default `AttributionControl` that renders it bottom-right. If you ever set `attributionControl={false}` or add a custom map UI that hides the default control, you must surface the OSM credit elsewhere on the page.
 
 ### Frontend deploy is manual — `git push` is NOT enough
 

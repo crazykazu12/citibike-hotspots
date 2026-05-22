@@ -29,7 +29,11 @@ import type {
 
 export type ViewMode = 'all' | 'hot'
 
-const PMTILES_URL = 'https://demo-bucket.protomaps.com/v4.pmtiles'
+// NYC extract self-hosted on R2 (same Cloudflare account as the Worker + Pages
+// project). Built from build.protomaps.com/20260522.pmtiles with bbox covering
+// the 5 boroughs + JC/Hoboken (-74.30,40.45,-73.65,40.95) and maxzoom=15.
+// Regenerate via the steps in CLAUDE.md ("Regenerating the NYC tile extract").
+const PMTILES_URL = 'https://pub-1e4794524da64a1aa8c1dc2c9e85cc47.r2.dev/nyc.pmtiles'
 const NEIGHBORHOOD_ZOOM_MAX = 13
 const STATION_ZOOM_MIN = 14.5
 const HOT_ONLY_THRESHOLD = 0.35
