@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { USE_FIXTURES } from './api'
 import type { ViewMode } from './Map'
 import type { ComparisonMode } from './types'
@@ -138,42 +138,30 @@ export function Drawer({
         </div>
         <div className="drawer-layers">
           <div className="drawer-section-label">Layers</div>
-          <label className="poi-toggle">
-            <input
-              type="checkbox"
-              checked={barsEnabled}
-              onChange={(e) => onBarsChange(e.target.checked)}
-            />
-            <span className="poi-swatch" style={{ background: BARS_SWATCH }} aria-hidden="true" />
-            <span className="poi-toggle-label">Bars</span>
-          </label>
-          <label className="poi-toggle">
-            <input
-              type="checkbox"
-              checked={coffeeEnabled}
-              onChange={(e) => onCoffeeChange(e.target.checked)}
-            />
-            <span className="poi-swatch" style={{ background: COFFEE_SWATCH }} aria-hidden="true" />
-            <span className="poi-toggle-label">Coffee</span>
-          </label>
-          <label className="poi-toggle">
-            <input
-              type="checkbox"
-              checked={foodEnabled}
-              onChange={(e) => onFoodChange(e.target.checked)}
-            />
-            <span className="poi-swatch" style={{ background: FOOD_SWATCH }} aria-hidden="true" />
-            <span className="poi-toggle-label">Food</span>
-          </label>
-          <label className="poi-toggle">
-            <input
-              type="checkbox"
-              checked={parksEnabled}
-              onChange={(e) => onParksChange(e.target.checked)}
-            />
-            <span className="poi-swatch" style={{ background: PARKS_SWATCH }} aria-hidden="true" />
-            <span className="poi-toggle-label">Parks</span>
-          </label>
+          <LayerRow
+            label="Bars"
+            color={BARS_SWATCH}
+            checked={barsEnabled}
+            onChange={onBarsChange}
+          />
+          <LayerRow
+            label="Coffee shops"
+            color={COFFEE_SWATCH}
+            checked={coffeeEnabled}
+            onChange={onCoffeeChange}
+          />
+          <LayerRow
+            label="Food"
+            color={FOOD_SWATCH}
+            checked={foodEnabled}
+            onChange={onFoodChange}
+          />
+          <LayerRow
+            label="Parks"
+            color={PARKS_SWATCH}
+            checked={parksEnabled}
+            onChange={onParksChange}
+          />
         </div>
         <div className="drawer-indicator">
           <span className={USE_FIXTURES ? 'updated-indicator fixture' : 'updated-indicator'}>
@@ -191,5 +179,41 @@ export function Drawer({
         <span className="drawer-tab-icon" aria-hidden="true">≡</span>
       </button>
     </div>
+  )
+}
+
+// One row in the drawer's Layers section: a color swatch + label on the left,
+// an iOS-style sliding toggle on the right. The toggle is a real
+// <input type="checkbox"> with `appearance: none` and pseudo-element styling
+// (see .layer-toggle-switch in src/index.css), so keyboard nav and screen
+// readers behave as if it were a stock checkbox. The category's swatch color
+// is passed through to CSS via the --switch-on-color custom property so the
+// "on" track is tinted with the same hue the user sees on the map.
+function LayerRow({
+  label,
+  color,
+  checked,
+  onChange,
+}: {
+  label: string
+  color: string
+  checked: boolean
+  onChange: (checked: boolean) => void
+}) {
+  const switchStyle = { '--switch-on-color': color } as CSSProperties
+  return (
+    <label className="layer-row">
+      <span className="layer-row-label">
+        <span className="poi-swatch" style={{ background: color }} aria-hidden="true" />
+        {label}
+      </span>
+      <input
+        type="checkbox"
+        className="layer-toggle-switch"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        style={switchStyle}
+      />
+    </label>
   )
 }

@@ -268,19 +268,18 @@ code {
    Compare and view-toggle rows above. */
 .drawer-layers {
   align-self: center;
-  width: fit-content;
+  /* Fixed width so the toggle switches align in a vertical column on the
+     right, regardless of label width ("Bars" 4 chars vs "Coffee shops" 12). */
+  width: 200px;
   display: flex;
   flex-direction: column;
-  /* center the section label (which is alone on its row), but left-align
-     the checkbox rows so all checkboxes line up vertically — labels have
-     different widths so centering each row independently would look ragged. */
-  align-items: flex-start;
-  gap: 8px;
+  align-items: stretch;
+  gap: 10px;
 }
 
 .drawer-section-label {
-  /* override the parent's flex-start so the section label stays centered
-     across the layers block */
+  /* Section heading stays centered across the layers block; only the rows
+     below it stretch full-width. */
   align-self: center;
 }
 
@@ -293,24 +292,25 @@ code {
   transition: color 200ms ease;
 }
 
-.poi-toggle {
-  display: inline-flex;
+/* One row: swatch + label on the left, sliding toggle on the right.
+   The wrapping <label> means clicking anywhere on the row flips the toggle
+   — native behavior, no JS click-forwarding needed. */
+.layer-row {
+  display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 12px;
   cursor: pointer;
   font-size: 13px;
   color: var(--header-text, #f3f4f6);
   user-select: none;
 }
 
-.poi-toggle input[type="checkbox"] {
-  /* Subtly themed native checkbox — keeps platform accessibility while
-     visually fitting the dark drawer. accent-color is widely supported. */
-  accent-color: #a78bfa;
-  width: 14px;
-  height: 14px;
-  margin: 0;
-  cursor: pointer;
+.layer-row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1;
 }
 
 .poi-swatch {
@@ -319,10 +319,57 @@ code {
   height: 10px;
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.6);
+  flex-shrink: 0;
 }
 
-.poi-toggle-label {
-  line-height: 1;
+/* iOS-style sliding toggle. Real <input type="checkbox"> under the hood with
+   appearance:none, so keyboard nav + screen-reader semantics are preserved.
+   Track tint when ON comes from --switch-on-color (set per-row via inline
+   style with the category color), so the active switch visually ties to the
+   color swatch + the dots/clusters the user sees on the map. */
+.layer-toggle-switch {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 36px;
+  height: 20px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  position: relative;
+  cursor: pointer;
+  margin: 0;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background-color 200ms ease, border-color 200ms ease;
+}
+
+.layer-toggle-switch::before {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  transition: transform 200ms ease;
+}
+
+.layer-toggle-switch:checked {
+  background: var(--switch-on-color, #22d3ee);
+  border-color: var(--switch-on-color, #22d3ee);
+}
+
+.layer-toggle-switch:checked::before {
+  /* Track is 36px wide, knob is 16px wide; with 1px border + 1px inset on
+     both sides, the knob travels (36 - 2 - 2 - 16) = 16px to the right. */
+  transform: translateX(16px);
+}
+
+.layer-toggle-switch:focus-visible {
+  outline: 2px solid var(--accent, #c084fc);
+  outline-offset: 2px;
 }
 
 /* POI marker popup — overrides MapLibre's default light-themed popup so it
