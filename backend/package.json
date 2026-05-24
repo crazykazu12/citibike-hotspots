@@ -10,12 +10,15 @@
     "db:schema": "wrangler d1 execute where-in-the-citi-data --remote --file=schema.sql",
     "db:count": "wrangler d1 execute where-in-the-citi-data --remote --command=\"SELECT COUNT(*), MIN(captured_at), MAX(captured_at) FROM raw_snapshots\"",
     "setup:stations": "tsx scripts/populate-stations-neighborhoods.ts",
+    "setup:poi": "tsx scripts/build-poi-geojson.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250503.0",
     "@turf/boolean-point-in-polygon": "^7.3.5",
     "@turf/helpers": "^7.3.5",
+    "@turf/simplify": "^7.3.5",
+    "osmtogeojson": "^3.0.0-beta.5",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "wrangler": "^4.0.0"

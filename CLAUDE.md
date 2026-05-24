@@ -232,6 +232,30 @@ cd backend && npx wrangler r2 object put where-in-the-citi-tiles/nyc.pmtiles \
 
 Current extract: ~106 MB, 4,323 tiles, built from `20260522.pmtiles`. No frontend change needed — the URL is stable. R2 CORS rules (allowed origins `https://where-in-the-citi.pages.dev` and `http://localhost:5173`, GET/HEAD with `Range`) are stored on the bucket; re-apply via `npx wrangler r2 bucket cors set where-in-the-citi-tiles --file=<rules.json> --force` if they ever get cleared.
 
+### Regenerating POI data
+
+Four optional POI overlay layers (coffee/food/bars/parks) are sourced from OpenStreetMap via the public Overpass API, pre-processed, and uploaded to the same R2 bucket as the basemap. Data is essentially static — cafes turn over slowly, parks almost never — so refresh **quarterly** or sooner if visibly stale.
+
+```bash
+cd backend
+npm run setup:poi
+```
+
+The script (`backend/scripts/build-poi-geojson.ts`) runs four Overpass queries over the NYC bbox (same as the basemap extract: `40.45,-74.30,40.95,-73.65`), converts to GeoJSON via `osmtogeojson`, strips properties down to `name` (+ `amenity`/`cuisine`/`brand` for food, +`amenity` for bars), simplifies park polygons via `@turf/simplify` at tolerance 0.0002 (~70% vertex reduction), writes to `backend/data/nyc-{cafe,food,bars,parks}.geojson` (gitignored — R2 is source of truth), and uploads each to R2. ~5s delay between Overpass queries to be polite to the shared public endpoint.
+
+Live R2 URLs (stable across regenerations — frontend URL constants don't need to change):
+
+```
+https://pub-1e4794524da64a1aa8c1dc2c9e85cc47.r2.dev/nyc-cafe.geojson
+https://pub-1e4794524da64a1aa8c1dc2c9e85cc47.r2.dev/nyc-food.geojson
+https://pub-1e4794524da64a1aa8c1dc2c9e85cc47.r2.dev/nyc-bars.geojson
+https://pub-1e4794524da64a1aa8c1dc2c9e85cc47.r2.dev/nyc-parks.geojson
+```
+
+Current sizes (built 2026-05-24): cafe 72 KB gzip / food 448 KB gzip / bars 53 KB gzip / parks 239 KB gzip. CORS rules already permit the Pages origin + localhost dev — no per-file setup needed; the bucket-level CORS covers all objects.
+
+If the public Overpass endpoint rate-limits, the script error message names a mirror (`https://overpass.kumi.systems/api/interpreter`) — swap the constant in the script. The frontend loading these files happens in Phase 2; this script only produces and uploads them.
+
 ### Attribution is a real licensing requirement
 
 The Protomaps tilesets are a "Produced Work" of OpenStreetMap and inherit OSM's ODbL license. The map MUST visibly credit `© OpenStreetMap` somewhere. The attribution is wired via the `attribution` field on the `protomaps` vector source in `src/Map.tsx` (`<a href="https://protomaps.com">Protomaps</a> © <a href="https://openstreetmap.org">OpenStreetMap</a>`); `react-map-gl`'s `<MaplibreMap>` adds a default `AttributionControl` that renders it bottom-right. If you ever set `attributionControl={false}` or add a custom map UI that hides the default control, you must surface the OSM credit elsewhere on the page.

@@ -3,3 +3,10 @@ node_modules
 .dev.vars
 *.log
 .DS_Store
+
+# Generated POI GeoJSON — produced by `npm run setup:poi`; source of truth is R2.
+# nyc-neighborhoods.geojson is a hand-curated checked-in file and is NOT ignored.
+data/nyc-cafe.geojson
+data/nyc-food.geojson
+data/nyc-bars.geojson
+data/nyc-parks.geojson
