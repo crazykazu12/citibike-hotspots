@@ -77,22 +77,37 @@ const MAX_BOUNDS: [[number, number], [number, number]] = [
   [-74.28, 40.47],
   [-73.67, 40.93],
 ]
-// 'bars-points' and 'bars-clusters' are referenced unconditionally — MapLibre
-// silently ignores layer IDs that don't exist (so referencing them while the
-// bars source is unmounted is harmless). When bars are loaded, click events
-// route to the popup / cluster-zoom branches; otherwise these IDs are no-ops.
-const INTERACTIVE_LAYER_IDS = ['neighborhoods-fill', 'bars-clusters', 'bars-points']
+// POI layer IDs are referenced unconditionally — MapLibre silently ignores
+// layer IDs that don't exist (so referencing them while a source is unmounted
+// is harmless). When a category is loaded, click events route to the popup /
+// cluster-zoom branches; otherwise these IDs are no-ops. Branching uses the
+// '-clusters'/'-points' suffix so adding a new point category is a one-line
+// change to the helper-component instances and INTERACTIVE_LAYER_IDS.
+const INTERACTIVE_LAYER_IDS = [
+  'neighborhoods-fill',
+  'bars-clusters', 'bars-points',
+  'coffee-clusters', 'coffee-points',
+  'food-clusters', 'food-points',
+  'parks-fill',
+]
 
-// POI category colors. Each category gets a dedicated hue distinct from the
-// cyan→yellow→red bike-activity gradient AND from UI-chrome colors like
-// --accent (focus outlines). Phase 3 will add coffee/food/parks values.
-const BAR_COLOR = '#a78bfa' // violet-400
+// POI category colors. Each is distinct from the cyan→yellow→red bike-activity
+// gradient AND from UI-chrome colors like --accent (focus outlines).
+const BAR_COLOR = '#a78bfa'    // violet-400
+const COFFEE_COLOR = '#a16207' // yellow-700 (browner amber; clear of the heatmap's hot-end orange)
+const FOOD_COLOR = '#ec4899'   // pink-500
+// Parks use baked-alpha rgba so a single POI_ZOOM_FADE interpolate can act as
+// a 0→1 opacity multiplier without separate fill/outline fade constants.
+// At full zoom: fill 30%, outline 65%. Bumped slightly so the overlay reads
+// as clearly more saturated than the Protomaps dark-theme ambient park-green.
+const PARKS_FILL_COLOR = 'rgba(34, 197, 94, 0.30)'    // #22c55e @ 30%
+const PARKS_OUTLINE_COLOR = 'rgba(34, 197, 94, 0.65)' // #22c55e @ 65%
 
-// POI zoom-fade — mirrors the heatmap's opacity interpolate exactly. Bars are
+// POI zoom-fade — mirrors the heatmap's opacity interpolate exactly. POIs are
 // invisible at city zoom (≤13), fade in over 13→14.5, fully visible at 14.5+.
-// Clustering (clusterMaxZoom=15 on the source) is intentionally set ABOVE this
-// fade band so the cluster→individual transition fires after bars are at full
-// opacity — avoiding a "pop" mid-fade where two visual transitions overlap.
+// Used uniformly across all four POI categories so toggle behavior is
+// consistent: every layer is hidden when zoomed out and fades in at the same
+// zoom level as the station heatmap.
 const POI_ZOOM_FADE: DataDrivenPropertyValueSpecification<number> = [
   'interpolate',
   ['linear'],
@@ -198,10 +213,16 @@ interface MapProps {
   // Visibility flips via the layer-level `visibility` prop so the source
   // and cluster index aren't torn down on every toggle.
   barsEnabled: boolean
-  // FeatureCollection of bar points (Phase 1 script emits Point geometries
-  // only for this category). Typed loosely as the hook's default because
-  // narrowing here forces a generic on the hook with no payoff.
+  // FeatureCollection per category. Loose typing matches the hook's default
+  // return — narrowing here would force generic plumbing for no payoff.
+  // null until the user first toggles the category on; stays cached after.
   barsData: FeatureCollection | null
+  coffeeEnabled: boolean
+  coffeeData: FeatureCollection | null
+  foodEnabled: boolean
+  foodData: FeatureCollection | null
+  parksEnabled: boolean
+  parksData: FeatureCollection | null
 }
 
 interface PoiPopupState {
@@ -320,6 +341,12 @@ export function Map({
   theme,
   barsEnabled,
   barsData,
+  coffeeEnabled,
+  coffeeData,
+  foodEnabled,
+  foodData,
+  parksEnabled,
+  parksData,
 }: MapProps) {
   const [poiPopup, setPoiPopup] = useState<PoiPopupState | null>(null)
   const comparisonActive = comparisonMode !== 'none'
@@ -455,11 +482,13 @@ export function Map({
     if (!map) return
     // POI layers handled first — at high zoom they're the only interactive
     // thing (neighborhood click-to-zoom is intentionally disabled when
-    // zoomed in past STATION_ZOOM_MIN).
+    // zoomed in past STATION_ZOOM_MIN). The '-clusters'/'-points'/'parks-fill'
+    // suffix matching lets a single branch handle all four POI categories.
     const features = e.features ?? []
-    const cluster = features.find((x) => x.layer?.id === 'bars-clusters')
-    if (cluster) {
-      const src = map.getSource('bars') as maplibregl.GeoJSONSource | undefined
+    const cluster = features.find((x) => x.layer?.id?.endsWith('-clusters'))
+    if (cluster && cluster.layer?.id) {
+      const sourceId = cluster.layer.id.replace(/-clusters$/, '')
+      const src = map.getSource(sourceId) as maplibregl.GeoJSONSource | undefined
       const cid = cluster.properties?.cluster_id as number | undefined
       if (src && cid !== undefined && cluster.geometry.type === 'Point') {
         const [lon, lat] = cluster.geometry.coordinates as [number, number]
@@ -469,11 +498,20 @@ export function Map({
       }
       return
     }
-    const poi = features.find((x) => x.layer?.id === 'bars-points')
+    const poi = features.find((x) => x.layer?.id?.endsWith('-points'))
     if (poi && poi.geometry.type === 'Point') {
       const [lon, lat] = poi.geometry.coordinates as [number, number]
       const name = (poi.properties?.name as string | undefined) ?? 'Unnamed'
       setPoiPopup({ lon, lat, name })
+      return
+    }
+    const park = features.find((x) => x.layer?.id === 'parks-fill')
+    if (park) {
+      // Parks are polygons — popup at click point (not centroid) so the popup
+      // appears where the user clicked instead of jumping to the polygon's
+      // mean for large parks like Central Park.
+      const name = (park.properties?.name as string | undefined) ?? 'Unnamed park'
+      setPoiPopup({ lon: e.lngLat.lng, lat: e.lngLat.lat, name })
       return
     }
     // Fall through to neighborhood click-to-zoom (existing behavior, unchanged).
@@ -597,67 +635,46 @@ export function Map({
             paint={{ 'line-color': theme.overlays.neighborhoodOutline, 'line-width': 1 }}
           />
         )}
-        {/* Bars POI overlay. Source mounts only after first toggle-on (when
-            barsData becomes non-null) and stays mounted thereafter; visibility
-            on each layer flips with `barsEnabled` so the cluster index isn't
-            torn down on every toggle. clusterMaxZoom=15 deliberately sits
-            above the 13→14.5 fade band so the cluster→individual transition
-            fires at full opacity, not mid-fade. */}
-        {barsData && (
-          <Source
-            id="bars"
-            type="geojson"
-            data={barsData}
-            cluster
-            clusterRadius={50}
-            clusterMaxZoom={15}
-          >
-            <Layer
-              id="bars-clusters"
-              type="circle"
-              filter={['has', 'point_count']}
-              layout={{ visibility: barsEnabled ? 'visible' : 'none' }}
-              paint={{
-                'circle-color': BAR_COLOR,
-                'circle-opacity': POI_ZOOM_FADE,
-                'circle-stroke-color': 'rgba(255, 255, 255, 0.85)',
-                'circle-stroke-width': 1.5,
-                'circle-stroke-opacity': POI_ZOOM_FADE,
-                'circle-radius': ['step', ['get', 'point_count'], 12, 10, 16, 50, 22],
-              }}
-            />
-            <Layer
-              id="bars-cluster-count"
-              type="symbol"
-              filter={['has', 'point_count']}
-              layout={{
-                visibility: barsEnabled ? 'visible' : 'none',
-                'text-field': '{point_count_abbreviated}',
-                'text-size': 11,
-                'text-font': ['Noto Sans Regular'],
-                'text-allow-overlap': true,
-              }}
-              paint={{
-                'text-color': '#ffffff',
-                'text-opacity': POI_ZOOM_FADE,
-              }}
-            />
-            <Layer
-              id="bars-points"
-              type="circle"
-              filter={['!', ['has', 'point_count']]}
-              layout={{ visibility: barsEnabled ? 'visible' : 'none' }}
-              paint={{
-                'circle-color': BAR_COLOR,
-                'circle-opacity': POI_ZOOM_FADE,
-                'circle-radius': 5,
-                'circle-stroke-color': 'rgba(255, 255, 255, 0.85)',
-                'circle-stroke-width': 1,
-                'circle-stroke-opacity': POI_ZOOM_FADE,
-              }}
-            />
-          </Source>
-        )}
+        {/* POI overlays. Each category's Source mounts only after first
+            toggle-on (when its data becomes non-null) and stays mounted
+            thereafter; per-layer visibility flips with the enabled flag so
+            MapLibre's cluster index isn't torn down on every toggle.
+            clusterMaxZoom is deliberately ABOVE the 13→14.5 fade band so the
+            cluster→individual transition fires at full opacity, not mid-fade.
+            Food clusters one zoom-level longer (16 vs 15) because it's 8×
+            denser than bars/coffee — keeps zoom-17 viewports readable instead
+            of a pin-blanket. */}
+        <PoiPointLayer
+          sourceId="bars"
+          data={barsData}
+          color={BAR_COLOR}
+          enabled={barsEnabled}
+          clusterMaxZoom={15}
+          clusterRadius={50}
+        />
+        <PoiPointLayer
+          sourceId="coffee"
+          data={coffeeData}
+          color={COFFEE_COLOR}
+          enabled={coffeeEnabled}
+          clusterMaxZoom={15}
+          clusterRadius={50}
+        />
+        <PoiPointLayer
+          sourceId="food"
+          data={foodData}
+          color={FOOD_COLOR}
+          enabled={foodEnabled}
+          clusterMaxZoom={16}
+          clusterRadius={60}
+        />
+        <PoiPolygonLayer
+          sourceId="parks"
+          data={parksData}
+          fillColor={PARKS_FILL_COLOR}
+          outlineColor={PARKS_OUTLINE_COLOR}
+          enabled={parksEnabled}
+        />
         {poiPopup && (
           <Popup
             longitude={poiPopup.lon}
@@ -680,6 +697,133 @@ export function Map({
       )}
       <div className="legend">{legendText}</div>
     </>
+  )
+}
+
+// Renders a clustered point category (bars, coffee, food). Source mounts when
+// `data` is non-null (i.e. after the user first toggles the category on) and
+// stays mounted for the lifetime of the Map so visibility toggles are cheap.
+// Layer IDs follow the `${sourceId}-{clusters,cluster-count,points}` pattern
+// matched by the generic onClick branching.
+function PoiPointLayer({
+  sourceId,
+  data,
+  color,
+  enabled,
+  clusterMaxZoom,
+  clusterRadius,
+}: {
+  sourceId: string
+  data: FeatureCollection | null
+  color: string
+  enabled: boolean
+  clusterMaxZoom: number
+  clusterRadius: number
+}) {
+  if (!data) return null
+  const vis = enabled ? 'visible' : 'none'
+  return (
+    <Source
+      id={sourceId}
+      type="geojson"
+      data={data}
+      cluster
+      clusterRadius={clusterRadius}
+      clusterMaxZoom={clusterMaxZoom}
+    >
+      <Layer
+        id={`${sourceId}-clusters`}
+        type="circle"
+        filter={['has', 'point_count']}
+        layout={{ visibility: vis }}
+        paint={{
+          'circle-color': color,
+          'circle-opacity': POI_ZOOM_FADE,
+          'circle-stroke-color': 'rgba(255, 255, 255, 0.85)',
+          'circle-stroke-width': 1.5,
+          'circle-stroke-opacity': POI_ZOOM_FADE,
+          'circle-radius': ['step', ['get', 'point_count'], 12, 10, 16, 50, 22],
+        }}
+      />
+      <Layer
+        id={`${sourceId}-cluster-count`}
+        type="symbol"
+        filter={['has', 'point_count']}
+        layout={{
+          visibility: vis,
+          'text-field': '{point_count_abbreviated}',
+          'text-size': 11,
+          'text-font': ['Noto Sans Regular'],
+          'text-allow-overlap': true,
+        }}
+        paint={{
+          'text-color': '#ffffff',
+          'text-opacity': POI_ZOOM_FADE,
+        }}
+      />
+      <Layer
+        id={`${sourceId}-points`}
+        type="circle"
+        filter={['!', ['has', 'point_count']]}
+        layout={{ visibility: vis }}
+        paint={{
+          'circle-color': color,
+          'circle-opacity': POI_ZOOM_FADE,
+          'circle-radius': 5,
+          'circle-stroke-color': 'rgba(255, 255, 255, 0.85)',
+          'circle-stroke-width': 1,
+          'circle-stroke-opacity': POI_ZOOM_FADE,
+        }}
+      />
+    </Source>
+  )
+}
+
+// Renders a polygon category (parks). No clustering — clusters are
+// meaningless for polygons. The geometry-type filter drops the handful of
+// stray Point-tagged "parks" in the source (OSM label markers that aren't
+// real polygon areas). Alpha baked into the color so POI_ZOOM_FADE acts as a
+// simple 0→1 opacity multiplier matching the point-category fade.
+function PoiPolygonLayer({
+  sourceId,
+  data,
+  fillColor,
+  outlineColor,
+  enabled,
+}: {
+  sourceId: string
+  data: FeatureCollection | null
+  fillColor: string
+  outlineColor: string
+  enabled: boolean
+}) {
+  if (!data) return null
+  const vis = enabled ? 'visible' : 'none'
+  const polygonOnly: ExpressionSpecification = ['!=', ['geometry-type'], 'Point']
+  return (
+    <Source id={sourceId} type="geojson" data={data}>
+      <Layer
+        id={`${sourceId}-fill`}
+        type="fill"
+        filter={polygonOnly}
+        layout={{ visibility: vis }}
+        paint={{
+          'fill-color': fillColor,
+          'fill-opacity': POI_ZOOM_FADE,
+        }}
+      />
+      <Layer
+        id={`${sourceId}-outline`}
+        type="line"
+        filter={polygonOnly}
+        layout={{ visibility: vis }}
+        paint={{
+          'line-color': outlineColor,
+          'line-opacity': POI_ZOOM_FADE,
+          'line-width': 1,
+        }}
+      />
+    </Source>
   )
 }
 

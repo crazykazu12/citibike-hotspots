@@ -13,6 +13,9 @@ export const USE_FIXTURES = import.meta.env.VITE_USE_FIXTURES === 'true'
 // Stable URLs across regenerations; safe to hardcode.
 const R2_POI_BASE = 'https://pub-1e4794524da64a1aa8c1dc2c9e85cc47.r2.dev'
 export const BARS_URL = `${R2_POI_BASE}/nyc-bars.geojson`
+export const COFFEE_URL = `${R2_POI_BASE}/nyc-cafe.geojson`
+export const FOOD_URL = `${R2_POI_BASE}/nyc-food.geojson`
+export const PARKS_URL = `${R2_POI_BASE}/nyc-parks.geojson`
 
 export interface CurrentStation {
   station_id: string

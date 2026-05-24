@@ -13,12 +13,21 @@ interface DrawerProps {
   onComparisonChange: (mode: ComparisonMode) => void
   barsEnabled: boolean
   onBarsChange: (enabled: boolean) => void
+  coffeeEnabled: boolean
+  onCoffeeChange: (enabled: boolean) => void
+  foodEnabled: boolean
+  onFoodChange: (enabled: boolean) => void
+  parksEnabled: boolean
+  onParksChange: (enabled: boolean) => void
 }
 
-// Per-category POI swatch color — must match the corresponding marker color
-// in src/Map.tsx (BAR_COLOR). Kept in sync by being a separate const here so
-// the legend swatch always shows what the user will see on the map.
+// Per-category POI swatch colors — kept in sync by mirroring the marker color
+// constants in src/Map.tsx (BAR_COLOR, COFFEE_COLOR, FOOD_COLOR, PARKS_*_COLOR).
+// The swatch is the user's legend for "this dot color = this category."
 const BARS_SWATCH = '#a78bfa'
+const COFFEE_SWATCH = '#a16207'
+const FOOD_SWATCH = '#ec4899'
+const PARKS_SWATCH = '#22c55e'
 
 function formatRelative(deltaMs: number): string {
   if (deltaMs < 5000) return 'Updated just now'
@@ -38,6 +47,12 @@ export function Drawer({
   onComparisonChange,
   barsEnabled,
   onBarsChange,
+  coffeeEnabled,
+  onCoffeeChange,
+  foodEnabled,
+  onFoodChange,
+  parksEnabled,
+  onParksChange,
 }: DrawerProps) {
   const [open, setOpen] = useState(false)
   const drawerRef = useRef<HTMLDivElement>(null)
@@ -129,12 +144,35 @@ export function Drawer({
               checked={barsEnabled}
               onChange={(e) => onBarsChange(e.target.checked)}
             />
-            <span
-              className="poi-swatch"
-              style={{ background: BARS_SWATCH }}
-              aria-hidden="true"
-            />
+            <span className="poi-swatch" style={{ background: BARS_SWATCH }} aria-hidden="true" />
             <span className="poi-toggle-label">Bars</span>
+          </label>
+          <label className="poi-toggle">
+            <input
+              type="checkbox"
+              checked={coffeeEnabled}
+              onChange={(e) => onCoffeeChange(e.target.checked)}
+            />
+            <span className="poi-swatch" style={{ background: COFFEE_SWATCH }} aria-hidden="true" />
+            <span className="poi-toggle-label">Coffee</span>
+          </label>
+          <label className="poi-toggle">
+            <input
+              type="checkbox"
+              checked={foodEnabled}
+              onChange={(e) => onFoodChange(e.target.checked)}
+            />
+            <span className="poi-swatch" style={{ background: FOOD_SWATCH }} aria-hidden="true" />
+            <span className="poi-toggle-label">Food</span>
+          </label>
+          <label className="poi-toggle">
+            <input
+              type="checkbox"
+              checked={parksEnabled}
+              onChange={(e) => onParksChange(e.target.checked)}
+            />
+            <span className="poi-swatch" style={{ background: PARKS_SWATCH }} aria-hidden="true" />
+            <span className="poi-toggle-label">Parks</span>
           </label>
         </div>
         <div className="drawer-indicator">

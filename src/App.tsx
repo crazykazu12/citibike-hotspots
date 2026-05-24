@@ -4,7 +4,7 @@ import { Header } from './Header'
 import { Drawer } from './Drawer'
 import { useStationActivity } from './useStationActivity'
 import { usePoiLayer } from './usePoiLayer'
-import { BARS_URL } from './api'
+import { BARS_URL, COFFEE_URL, FOOD_URL, PARKS_URL } from './api'
 import { THEMES } from './themes'
 import type { ComparisonMode } from './types'
 
@@ -20,7 +20,13 @@ function App() {
   // toggle-on and caches; subsequent toggles just flip layer visibility on
   // the already-loaded source.
   const [barsEnabled, setBarsEnabled] = useState(false)
+  const [coffeeEnabled, setCoffeeEnabled] = useState(false)
+  const [foodEnabled, setFoodEnabled] = useState(false)
+  const [parksEnabled, setParksEnabled] = useState(false)
   const barsData = usePoiLayer(BARS_URL, barsEnabled)
+  const coffeeData = usePoiLayer(COFFEE_URL, coffeeEnabled)
+  const foodData = usePoiLayer(FOOD_URL, foodEnabled)
+  const parksData = usePoiLayer(PARKS_URL, parksEnabled)
 
   const {
     stations,
@@ -69,6 +75,12 @@ function App() {
         theme={theme}
         barsEnabled={barsEnabled}
         barsData={barsData}
+        coffeeEnabled={coffeeEnabled}
+        coffeeData={coffeeData}
+        foodEnabled={foodEnabled}
+        foodData={foodData}
+        parksEnabled={parksEnabled}
+        parksData={parksData}
       />
       <Drawer
         lastSnapshotAt={lastSnapshotAt}
@@ -78,6 +90,12 @@ function App() {
         onComparisonChange={setComparisonMode}
         barsEnabled={barsEnabled}
         onBarsChange={setBarsEnabled}
+        coffeeEnabled={coffeeEnabled}
+        onCoffeeChange={setCoffeeEnabled}
+        foodEnabled={foodEnabled}
+        onFoodChange={setFoodEnabled}
+        parksEnabled={parksEnabled}
+        onParksChange={setParksEnabled}
       />
       {showNoBaselineBanner && (
         <div className="comparison-status-banner">

@@ -271,8 +271,17 @@ code {
   width: fit-content;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  /* center the section label (which is alone on its row), but left-align
+     the checkbox rows so all checkboxes line up vertically — labels have
+     different widths so centering each row independently would look ragged. */
+  align-items: flex-start;
   gap: 8px;
+}
+
+.drawer-section-label {
+  /* override the parent's flex-start so the section label stays centered
+     across the layers block */
+  align-self: center;
 }
 
 .drawer-section-label {
