@@ -3,6 +3,8 @@ import { Map, type ViewMode } from './Map'
 import { Header } from './Header'
 import { Drawer } from './Drawer'
 import { useStationActivity } from './useStationActivity'
+import { usePoiLayer } from './usePoiLayer'
+import { BARS_URL } from './api'
 import { THEMES } from './themes'
 import type { ComparisonMode } from './types'
 
@@ -14,6 +16,11 @@ const theme = THEMES.dark
 function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('all')
   const [comparisonMode, setComparisonMode] = useState<ComparisonMode>('none')
+  // POI layer toggles — off by default. usePoiLayer fetches once on first
+  // toggle-on and caches; subsequent toggles just flip layer visibility on
+  // the already-loaded source.
+  const [barsEnabled, setBarsEnabled] = useState(false)
+  const barsData = usePoiLayer(BARS_URL, barsEnabled)
 
   const {
     stations,
@@ -60,6 +67,8 @@ function App() {
         viewMode={viewMode}
         comparisonMode={comparisonMode}
         theme={theme}
+        barsEnabled={barsEnabled}
+        barsData={barsData}
       />
       <Drawer
         lastSnapshotAt={lastSnapshotAt}
@@ -67,6 +76,8 @@ function App() {
         onViewModeChange={setViewMode}
         comparisonMode={comparisonMode}
         onComparisonChange={setComparisonMode}
+        barsEnabled={barsEnabled}
+        onBarsChange={setBarsEnabled}
       />
       {showNoBaselineBanner && (
         <div className="comparison-status-banner">

@@ -11,7 +11,14 @@ interface DrawerProps {
   onViewModeChange: (mode: ViewMode) => void
   comparisonMode: ComparisonMode
   onComparisonChange: (mode: ComparisonMode) => void
+  barsEnabled: boolean
+  onBarsChange: (enabled: boolean) => void
 }
+
+// Per-category POI swatch color — must match the corresponding marker color
+// in src/Map.tsx (BAR_COLOR). Kept in sync by being a separate const here so
+// the legend swatch always shows what the user will see on the map.
+const BARS_SWATCH = '#a78bfa'
 
 function formatRelative(deltaMs: number): string {
   if (deltaMs < 5000) return 'Updated just now'
@@ -29,6 +36,8 @@ export function Drawer({
   onViewModeChange,
   comparisonMode,
   onComparisonChange,
+  barsEnabled,
+  onBarsChange,
 }: DrawerProps) {
   const [open, setOpen] = useState(false)
   const drawerRef = useRef<HTMLDivElement>(null)
@@ -111,6 +120,22 @@ export function Drawer({
           >
             Hot only
           </button>
+        </div>
+        <div className="drawer-layers">
+          <div className="drawer-section-label">Layers</div>
+          <label className="poi-toggle">
+            <input
+              type="checkbox"
+              checked={barsEnabled}
+              onChange={(e) => onBarsChange(e.target.checked)}
+            />
+            <span
+              className="poi-swatch"
+              style={{ background: BARS_SWATCH }}
+              aria-hidden="true"
+            />
+            <span className="poi-toggle-label">Bars</span>
+          </label>
         </div>
         <div className="drawer-indicator">
           <span className={USE_FIXTURES ? 'updated-indicator fixture' : 'updated-indicator'}>

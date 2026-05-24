@@ -4,6 +4,7 @@ import {
   Source,
   Layer,
   AttributionControl,
+  Popup,
   type MapEvent,
   type MapLayerMouseEvent,
   type MapRef,
@@ -76,7 +77,31 @@ const MAX_BOUNDS: [[number, number], [number, number]] = [
   [-74.28, 40.47],
   [-73.67, 40.93],
 ]
-const INTERACTIVE_LAYER_IDS = ['neighborhoods-fill']
+// 'bars-points' and 'bars-clusters' are referenced unconditionally — MapLibre
+// silently ignores layer IDs that don't exist (so referencing them while the
+// bars source is unmounted is harmless). When bars are loaded, click events
+// route to the popup / cluster-zoom branches; otherwise these IDs are no-ops.
+const INTERACTIVE_LAYER_IDS = ['neighborhoods-fill', 'bars-clusters', 'bars-points']
+
+// POI category colors. Each category gets a dedicated hue distinct from the
+// cyan→yellow→red bike-activity gradient AND from UI-chrome colors like
+// --accent (focus outlines). Phase 3 will add coffee/food/parks values.
+const BAR_COLOR = '#a78bfa' // violet-400
+
+// POI zoom-fade — mirrors the heatmap's opacity interpolate exactly. Bars are
+// invisible at city zoom (≤13), fade in over 13→14.5, fully visible at 14.5+.
+// Clustering (clusterMaxZoom=15 on the source) is intentionally set ABOVE this
+// fade band so the cluster→individual transition fires after bars are at full
+// opacity — avoiding a "pop" mid-fade where two visual transitions overlap.
+const POI_ZOOM_FADE: DataDrivenPropertyValueSpecification<number> = [
+  'interpolate',
+  ['linear'],
+  ['zoom'],
+  13, // NEIGHBORHOOD_ZOOM_MAX
+  0,
+  14.5, // STATION_ZOOM_MIN
+  1,
+]
 
 type MaplibreWithRegistry = typeof maplibregl & { _pmtilesRegistered?: boolean }
 const ml = maplibregl as MaplibreWithRegistry
@@ -168,6 +193,21 @@ interface MapProps {
   viewMode: ViewMode
   comparisonMode: ComparisonMode
   theme: Theme
+  // POI overlay — bars (Phase 2 pattern-setter for the four POI categories).
+  // barsData is null until the user first toggles on; once loaded, stays.
+  // Visibility flips via the layer-level `visibility` prop so the source
+  // and cluster index aren't torn down on every toggle.
+  barsEnabled: boolean
+  // FeatureCollection of bar points (Phase 1 script emits Point geometries
+  // only for this category). Typed loosely as the hook's default because
+  // narrowing here forces a generic on the hook with no payoff.
+  barsData: FeatureCollection | null
+}
+
+interface PoiPopupState {
+  lon: number
+  lat: number
+  name: string
 }
 
 interface HoverState {
@@ -278,7 +318,10 @@ export function Map({
   viewMode,
   comparisonMode,
   theme,
+  barsEnabled,
+  barsData,
 }: MapProps) {
+  const [poiPopup, setPoiPopup] = useState<PoiPopupState | null>(null)
   const comparisonActive = comparisonMode !== 'none'
 
   const baseStyle = useMemo(() => buildBaseStyle(theme), [theme])
@@ -386,7 +429,11 @@ export function Map({
       if (hover) setHover(null)
       return
     }
-    const f = e.features?.[0]
+    // Filter to neighborhood features only — POI layers are also in
+    // INTERACTIVE_LAYER_IDS for click handling, but they don't drive the
+    // hover tooltip (which reads NeighborhoodFillProps). A bar marker as the
+    // first hit would crash on .ntaname.
+    const f = e.features?.find((x) => x.layer?.id === 'neighborhoods-fill')
     if (f) {
       const props = f.properties as NeighborhoodFillProps
       const next: HoverState = { x: e.point.x, y: e.point.y, name: props.ntaname }
@@ -404,15 +451,39 @@ export function Map({
   }
 
   const onClick = (e: MapLayerMouseEvent) => {
+    const map = mapRef.current?.getMap()
+    if (!map) return
+    // POI layers handled first — at high zoom they're the only interactive
+    // thing (neighborhood click-to-zoom is intentionally disabled when
+    // zoomed in past STATION_ZOOM_MIN).
+    const features = e.features ?? []
+    const cluster = features.find((x) => x.layer?.id === 'bars-clusters')
+    if (cluster) {
+      const src = map.getSource('bars') as maplibregl.GeoJSONSource | undefined
+      const cid = cluster.properties?.cluster_id as number | undefined
+      if (src && cid !== undefined && cluster.geometry.type === 'Point') {
+        const [lon, lat] = cluster.geometry.coordinates as [number, number]
+        src.getClusterExpansionZoom(cid).then((zoom) => {
+          map.easeTo({ center: [lon, lat], zoom, duration: 500 })
+        }).catch((err) => console.error('cluster expansion failed', err))
+      }
+      return
+    }
+    const poi = features.find((x) => x.layer?.id === 'bars-points')
+    if (poi && poi.geometry.type === 'Point') {
+      const [lon, lat] = poi.geometry.coordinates as [number, number]
+      const name = (poi.properties?.name as string | undefined) ?? 'Unnamed'
+      setPoiPopup({ lon, lat, name })
+      return
+    }
+    // Fall through to neighborhood click-to-zoom (existing behavior, unchanged).
     if (e.target.getZoom() >= STATION_ZOOM_MIN) return
-    const f = e.features?.[0]
+    const f = features.find((x) => x.layer?.id === 'neighborhoods-fill')
     if (!f) return
     const props = f.properties as NeighborhoodFillProps
     if (viewMode === 'hot' && (props.normalizedScore ?? 0) < HOT_ONLY_THRESHOLD) return
     const geom = f.geometry
     if (geom.type !== 'Polygon' && geom.type !== 'MultiPolygon') return
-    const map = mapRef.current?.getMap()
-    if (!map) return
     const [w, s, ee, n] = geometryBbox(geom as Polygon | MultiPolygon)
     map.fitBounds(
       [
@@ -525,6 +596,81 @@ export function Map({
             source="neighborhoods"
             paint={{ 'line-color': theme.overlays.neighborhoodOutline, 'line-width': 1 }}
           />
+        )}
+        {/* Bars POI overlay. Source mounts only after first toggle-on (when
+            barsData becomes non-null) and stays mounted thereafter; visibility
+            on each layer flips with `barsEnabled` so the cluster index isn't
+            torn down on every toggle. clusterMaxZoom=15 deliberately sits
+            above the 13→14.5 fade band so the cluster→individual transition
+            fires at full opacity, not mid-fade. */}
+        {barsData && (
+          <Source
+            id="bars"
+            type="geojson"
+            data={barsData}
+            cluster
+            clusterRadius={50}
+            clusterMaxZoom={15}
+          >
+            <Layer
+              id="bars-clusters"
+              type="circle"
+              filter={['has', 'point_count']}
+              layout={{ visibility: barsEnabled ? 'visible' : 'none' }}
+              paint={{
+                'circle-color': BAR_COLOR,
+                'circle-opacity': POI_ZOOM_FADE,
+                'circle-stroke-color': 'rgba(255, 255, 255, 0.85)',
+                'circle-stroke-width': 1.5,
+                'circle-stroke-opacity': POI_ZOOM_FADE,
+                'circle-radius': ['step', ['get', 'point_count'], 12, 10, 16, 50, 22],
+              }}
+            />
+            <Layer
+              id="bars-cluster-count"
+              type="symbol"
+              filter={['has', 'point_count']}
+              layout={{
+                visibility: barsEnabled ? 'visible' : 'none',
+                'text-field': '{point_count_abbreviated}',
+                'text-size': 11,
+                'text-font': ['Noto Sans Regular'],
+                'text-allow-overlap': true,
+              }}
+              paint={{
+                'text-color': '#ffffff',
+                'text-opacity': POI_ZOOM_FADE,
+              }}
+            />
+            <Layer
+              id="bars-points"
+              type="circle"
+              filter={['!', ['has', 'point_count']]}
+              layout={{ visibility: barsEnabled ? 'visible' : 'none' }}
+              paint={{
+                'circle-color': BAR_COLOR,
+                'circle-opacity': POI_ZOOM_FADE,
+                'circle-radius': 5,
+                'circle-stroke-color': 'rgba(255, 255, 255, 0.85)',
+                'circle-stroke-width': 1,
+                'circle-stroke-opacity': POI_ZOOM_FADE,
+              }}
+            />
+          </Source>
+        )}
+        {poiPopup && (
+          <Popup
+            longitude={poiPopup.lon}
+            latitude={poiPopup.lat}
+            anchor="bottom"
+            offset={10}
+            closeButton
+            closeOnClick={false}
+            onClose={() => setPoiPopup(null)}
+            className="poi-popup"
+          >
+            {poiPopup.name}
+          </Popup>
         )}
       </MaplibreMap>
       {hover && (

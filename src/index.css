@@ -263,6 +263,83 @@ code {
   overflow-y: auto;
 }
 
+/* Layers section in the drawer — POI overlays (Phase 2: bars; Phase 3 adds
+   coffee/food/parks). Centered as a content-sized column block matching the
+   Compare and view-toggle rows above. */
+.drawer-layers {
+  align-self: center;
+  width: fit-content;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.drawer-section-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--header-subtext, #9ca3af);
+  transition: color 200ms ease;
+}
+
+.poi-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--header-text, #f3f4f6);
+  user-select: none;
+}
+
+.poi-toggle input[type="checkbox"] {
+  /* Subtly themed native checkbox — keeps platform accessibility while
+     visually fitting the dark drawer. accent-color is widely supported. */
+  accent-color: #a78bfa;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.poi-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+.poi-toggle-label {
+  line-height: 1;
+}
+
+/* POI marker popup — overrides MapLibre's default light-themed popup so it
+   reads against the dark basemap. Only restyles classes; structure unchanged. */
+.maplibregl-popup.poi-popup .maplibregl-popup-content {
+  background: rgba(20, 22, 28, 0.95);
+  color: var(--header-text, #f3f4f6);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-family: var(--sans);
+  font-size: 13px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+.maplibregl-popup.poi-popup .maplibregl-popup-tip {
+  border-top-color: rgba(20, 22, 28, 0.95);
+  border-bottom-color: rgba(20, 22, 28, 0.95);
+}
+
+.maplibregl-popup.poi-popup .maplibregl-popup-close-button {
+  color: var(--header-subtext, #9ca3af);
+  font-size: 16px;
+  padding: 0 6px;
+}
+
 .drawer-indicator {
   margin-top: auto;
   padding-top: 12px;
