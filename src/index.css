@@ -171,7 +171,7 @@ code {
   z-index: 1200;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   padding: 0 16px;
   background: var(--header-bg, rgba(255, 255, 255, 0.85));
   backdrop-filter: blur(8px);
@@ -180,6 +180,30 @@ code {
   font-family: var(--sans);
   box-sizing: border-box;
   transition: background-color 200ms ease, border-color 200ms ease;
+}
+
+/* 4px bottom strip: 7 hard-edged vertical bands stepping from cyan to red,
+   mirroring the map's diverging cool→hot scale. Hard stops via linear-gradient
+   give crisp bands without DOM nodes. Endpoint colors match the dark theme's
+   overlay scale (themes.ts dark neighborhoodColorScale[0] = #22d3ee, comparison
+   hot endpoint #dc2626); intermediate stops are an even RGB interpolation. */
+.app-header::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(
+    to right,
+    #22d3ee 0%      14.286%,
+    #41b6cd 14.286% 28.571%,
+    #6099ab 28.571% 42.857%,
+    #7f7d8a 42.857% 57.143%,
+    #9e6069 57.143% 71.429%,
+    #bd4347 71.429% 85.714%,
+    #dc2626 85.714% 100%
+  );
 }
 
 .app-title {
@@ -191,6 +215,14 @@ code {
   white-space: nowrap;
   line-height: 1.1;
   transition: color 200ms ease;
+}
+
+/* The "Citi" word inside the title is the cool endpoint of the bottom band's
+   scale — same value as themes.ts dark neighborhoodColorScale[0]. No theme
+   CSS-var exposes this overlay color today; flagged for refactor if more
+   chrome ends up reaching into the overlay palette. */
+.app-title-accent {
+  color: #22d3ee;
 }
 
 /* Left slide-out drawer.
